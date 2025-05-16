@@ -166,9 +166,9 @@ class PathFollowingTest(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    path_planning_test = PathFollowingTest()
-    rclpy.spin(path_planning_test)
-    path_planning_test.destroy_node()
+    path_following_test = PathFollowingTest()
+    rclpy.spin(path_following_test)
+    path_following_test.destroy_node()
     rclpy.shutdown()
 
 if __name__ == "__main__":

@@ -39,7 +39,7 @@ def state_logger(self):
         self.mode_flag.is_ca,
     
     )
-    self.sim_var.flight_log.write(flightlog)
+    # self.sim_var.flight_log.write(flightlog)
 
 def set_initial_variables(classIn, dir, sim_name):
     
@@ -90,7 +90,7 @@ def set_logging_file(self):
     current_time = datetime.now() + timedelta(hours=9)
     log_file_name = current_time.strftime("%Y%m%d_%H%M%S_") + self.sim_var.sim_name + ".csv"
     log_path = os.path.join((self.sim_var.dir + '/log'), log_file_name)
-    self.sim_var.flight_log = open(log_path, "w")
+    # self.sim_var.flight_log = open(log_path, "w")
 
 def publish_to_plotter(self):
     self.pub_func_plotter.publish_global_waypoint_to_plotter(self.guid_var)

@@ -190,6 +190,7 @@ class PubFuncPX4:
     # publish offboard control mode
     def publish_offboard_control_mode(self, offboard_mode):
         msg = OffboardControlMode()
+        msg.timestamp = int(Clock().now().nanoseconds / 1000)  # time in microseconds
         msg.position        = offboard_mode.position
         msg.velocity        = offboard_mode.velocity
         msg.acceleration    = offboard_mode.acceleration
@@ -200,6 +201,7 @@ class PubFuncPX4:
     # publish_vehicle_command
     def publish_vehicle_command(self, modes):
         msg = VehicleCommand()
+        msg.timestamp = int(Clock().now().nanoseconds / 1000)  # time in microseconds
         msg.param1  = modes.params[0]
         msg.param2  = modes.params[1]
         msg.param3  = modes.params[2]
