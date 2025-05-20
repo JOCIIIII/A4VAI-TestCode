@@ -44,19 +44,6 @@ class PX4Publisher:
             self.node.qos_profile_px4
         )
     
-    # It has changed to declareAttitudeCommandPublisher
-    # because the attitude offboard mode is not used
-    # only velocity offboard mode is used
-
-    # self.pub_px4.declareVehicleAttitudeSetpointPublisher() 
-    # # publisher for vehicle attitude setpoint
-    # def declareVehicleAttitudeSetpointPublisher(self):
-    #     self.node.vehicle_attitude_setpoint_publisher = self.node.create_publisher(
-    #         VehicleAttitudeSetpoint,
-    #         "/fmu/in/vehicle_attitude_setpoint",
-    #         self.node.qos_profile_px4,
-    #     )
-    
     # publisher for vehicle velocity setpoint
     def declareTrajectorySetpointPublisher(self):
         self.node.trajectory_setpoint_publisher = self.node.create_publisher(

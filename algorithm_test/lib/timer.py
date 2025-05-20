@@ -13,12 +13,6 @@ class CommandPubTimer:
     def __init__(self, node, OffboardVariable):
         self.node = node
         self.OffboardVariable = OffboardVariable
-
-    # def declareOffboardAttitudeControlTimer(self, mode_flag, veh_att_set, pub_func_px4):
-    #     self.node.attitude_control_call_timer = self.node.create_timer(
-    #         self.OffboardVariable.period_offboard_att_ctrl,
-    #         lambda: pub_func_px4.publish_vehicle_attitude_setpoint(mode_flag, veh_att_set)
-    #     )
     
     def declareOffboardVelocityControlTimer(self, mode_flag, veh_att_set, pub_func_px4):
         self.node.velocity_control_call_timer = self.node.create_timer(
@@ -29,6 +23,11 @@ class CommandPubTimer:
         self.node.attitude_command_call_timer = self.node.create_timer(
             self.OffboardVariable.period_offboard_att_ctrl,
             lambda: pub_func_px4.publish_att_command(veh_att_set)
+        )
+    def declareFusionWeightTimer(self, weight, pub_func_px4):
+        self.node.fusion_weight_call_timer = self.node.create_timer(
+            self.OffboardVariable.period_fusion_weight,
+            lambda: pub_func_px4.publish_fusion_weight(weight)
         )
 
 class HeartbeatTimer:

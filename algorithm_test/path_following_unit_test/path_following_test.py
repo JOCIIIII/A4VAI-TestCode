@@ -23,7 +23,6 @@ class PathFollowingTest(Node):
         dir = os.path.dirname(os.path.abspath(__file__))
         sim_name = "pf_unit_test"
         set_initial_variables(self, dir, sim_name)
-        
         # endregion
         # ----------------------------------------------------------------------------------------#
         # region PUBLISHERS
@@ -31,10 +30,10 @@ class PathFollowingTest(Node):
         self.pub_px4.declareVehicleCommandPublisher()                   # Declare PX4 Vehicle Command Publisher
         self.pub_px4.declareOffboardControlModePublisher()              # Declare PX4 Offboard Control Mode Publisher
         self.pub_px4.declareAttitudeCommandPublisher()                  # Declare PX4 Attitude Command Publisher
+        self.pub_px4.declareFusionWeightPublisher()                     # Declare PX4 Fusion Weight Publisher
 
         self.pub_module   = ModulePublisher(self)
         self.pub_module.declareLocalWaypointPublisherToPF()        # Declare Local Waypoint Publisher to Path Following
-        self.pub_px4.declareFusionWeightPublisher()
 
         self.pub_heartbeat  = HeartbeatPublisher(self)
         self.pub_heartbeat.declareControllerHeartbeatPublisher()
@@ -47,7 +46,6 @@ class PathFollowingTest(Node):
         self.pub_plotter.declareHeadingPublisherToPlotter()
         self.pub_plotter.declareStatePublisherToPlotter()
         self.pub_plotter.declareMinDistancePublisherToPlotter()
-        
         # end region
         # ----------------------------------------------------------------------------------------#
         # region SUBSCRIBERS
@@ -68,7 +66,7 @@ class PathFollowingTest(Node):
         # region PUB FUNC
         self.pub_func_heartbeat = PubFuncHeartbeat(self)
         self.pub_func_px4       = PubFuncPX4(self)
-        self.pub_func_module  = PubFuncModule(self)
+        self.pub_func_module    = PubFuncModule(self)
         self.pub_func_plotter   = PubFuncPlotter(self)
         # endregion
         # ----------------------------------------------------------------------------------------#
@@ -77,16 +75,14 @@ class PathFollowingTest(Node):
         self.timer_offboard_control.declareOffboardControlTimer(self.offboard_control_main)
 
         self.timer_cmd = CommandPubTimer(self, self.offboard_var)
-        # self.timer_cmd.declareOffboardAttitudeControlTimer(self.mode_flag, self.veh_att_set, self.pub_func_px4)
         self.timer_cmd.declareAttitudeCommandTimer(self.mode_flag, self.veh_att_set, self.pub_func_px4)
-        
-        
+        self.timer_cmd.declareFusionWeightTimer(self.weight, self.pub_func_px4)
+
+        # heartbeat timer
         self.timer_heartbeat = HeartbeatTimer(self, self.offboard_var, self.pub_func_heartbeat)
         self.timer_heartbeat.declareControllerHeartbeatTimer()
         self.timer_heartbeat.declarePathPlanningHeartbeatTimer()
         self.timer_heartbeat.declareCollisionAvoidanceHeartbeatTimer()
-        # weight timer
-        self.timer_weight = self.create_timer(0.03, self.weight_callback)
         # endregion
     # ----------------------------------------------------------------------------------------#
     # region MAIN CODE

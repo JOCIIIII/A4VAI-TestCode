@@ -39,6 +39,7 @@ class OffboardVariable:
         self.period_offboard_control = 0.2     # required about 5Hz for attitude control (proof that the external controller is healthy
         self.period_offboard_att_ctrl = 0.004  # required 250Hz at least for attitude control
         self.period_offboard_vel_ctrl = 0.02
+        self.period_fusion_weight = 0.03
         self.pf_heartbeat = False
         self.pp_heartbeat = False
         self.ca_heartbeat = False
