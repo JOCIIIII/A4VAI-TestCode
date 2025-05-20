@@ -7,6 +7,7 @@ import os
 # ROS libraries
 import rclpy
 from rclpy.node import Node
+from rclpy.clock import Clock
 
 from ..lib.common_fuctions import set_initial_variables, state_logger, publish_to_plotter, set_wp
 from ..lib.timer import HeartbeatTimer, MainTimer, CommandPubTimer
@@ -16,9 +17,9 @@ from ..lib.publisher import PubFuncHeartbeat, PubFuncPX4, PubFuncModule, PubFunc
 
 from custom_msgs.msg import GlobalWaypointSetpoint, LocalWaypointSetpoint
 
-class PathFollowingTest(Node):
+class PathPlanningPathFollowingIntegTest(Node):
     def __init__(self):
-        super().__init__("give_global_waypoint")
+        super().__init__("path_planning_path_following_integ_test")
 
         ############################################################################################################
         # input: start_point, goal_point
@@ -30,10 +31,9 @@ class PathFollowingTest(Node):
         # ----------------------------------------------------------------------------------------#
         # region INITIALIZE
         dir = os.path.dirname(os.path.abspath(__file__))
-        sim_name = "pf_unit_test"
+        sim_name = "pp_pf_integ_test"
         set_initial_variables(self, dir, sim_name)
         
-        self.offboard_mode.attitude = True
         self.guid_var.init_pos = np.array([self.start_point[0]*400/1024, self.start_point[1]*400/1024, self.start_point[2]])
         # test mode 
         # 1 : normal, 2 : wp change
@@ -42,9 +42,15 @@ class PathFollowingTest(Node):
         # ----------------------------------------------------------------------------------------#
         # region PUBLISHERS
         self.pub_px4        = PX4Publisher(self)
-        self.pub_px4.declareVehicleCommandPublisher()
-        self.pub_px4.declareOffboardControlModePublisher()
-        self.pub_px4.declareVehicleAttitudeSetpointPublisher()
+        self.pub_px4.declareVehicleCommandPublisher()                   # Declare PX4 Vehicle Command Publisher
+        self.pub_px4.declareOffboardControlModePublisher()              # Declare PX4 Offboard Control Mode Publisher
+        self.pub_px4.declareAttitudeCommandPublisher()                  # Declare PX4 Attitude Command Publisher
+        self.pub_px4.declareFusionWeightPublisher()
+
+        # It has changed to declareAttitudeCommandPublisher
+        # because the attitude offboard mode is not used
+        # only velocity offboard mode is used
+        # self.pub_px4.declareVehicleAttitudeSetpointPublisher()        # Declare PX4 Vehicle Attitude Setpoint Publisher
 
         self.pub_module   = ModulePublisher(self)
         self.pub_module.declareLocalWaypointPublisherToPF()
@@ -92,47 +98,58 @@ class PathFollowingTest(Node):
         self.timer_offboard_control.declareOffboardControlTimer(self.offboard_control_main)
 
         self.timer_cmd = CommandPubTimer(self, self.offboard_var)
-        self.timer_cmd.declareOffboardAttitudeControlTimer(self.mode_flag, self.veh_att_set, self.pub_func_px4)
+        # self.timer_cmd.declareOffboardAttitudeControlTimer(self.mode_flag, self.veh_att_set, self.pub_func_px4)
+        self.timer_cmd.declareAttitudeCommandTimer(self.mode_flag, self.veh_att_set, self.pub_func_px4)
         
         self.timer_heartbeat = HeartbeatTimer(self, self.offboard_var, self.pub_func_heartbeat)
         self.timer_heartbeat.declareControllerHeartbeatTimer()
         self.timer_heartbeat.declareCollisionAvoidanceHeartbeatTimer()
+
+        # weight timer
+        self.timer_weight = self.create_timer(0.03, self.weight_callback)
         # endregion
     # ----------------------------------------------------------------------------------------#
     # region MAIN CODE
     def offboard_control_main(self):
 
         # send offboard mode and arm mode command to px4
-        if self.offboard_var.counter == self.offboard_var.flight_start_time and self.mode_flag.is_takeoff == False:
+        if self.mode_flag.is_standby == True:
+            self.mode_flag.is_takeoff = True
+            self.mode_flag.is_standby = False
+
+        # send offboard mode and arm mode command to px4
+        if self.offboard_var.counter == self.offboard_var.flight_start_time and self.mode_flag.is_takeoff == True:
             # arm cmd to px4
             self.pub_func_px4.publish_vehicle_command(self.modes.prm_arm_mode)
-            self.pub_func_px4.publish_vehicle_command(self.modes.prm_takeoff_mode)
             # offboard mode cmd to px4
+            self.pub_func_px4.publish_vehicle_command(self.modes.prm_takeoff_mode)
 
         # takeoff after a certain period of time
         elif self.offboard_var.counter <= self.offboard_var.flight_start_time:
             self.offboard_var.counter += 1
 
         # check if the vehicle is ready to initial position
-        if self.mode_flag.is_takeoff == False and self.state_var.z > self.guid_var.init_pos[2]:
-            self.mode_flag.is_takeoff = True
-            self.get_logger().info('Vehicle is reached to initial position')
-
-        # if the vehicle was taken off send local waypoint to path following and wait in position mode
-        if self.mode_flag.is_takeoff == True and self.mode_flag.pf_recieved_lw == False:
+        if self.mode_flag.is_takeoff == True and self.state_var.z > self.guid_var.init_pos[2]:
+            self.mode_flag.is_takeoff = False
+        
+        if self.mode_flag.is_takeoff == False and self.mode_flag.pf_recieved_lw == False:
             self.pub_func_px4.publish_vehicle_command(self.modes.prm_position_mode)
             self.global_waypoint_publish(self.start_point, self.goal_point)
             
         # check if path following is recieved the local waypoint
         if self.mode_flag.pf_recieved_lw == True and self.mode_flag.pf_done == False:
+            self.mode_flag.is_offboard = True
             self.mode_flag.is_pf = True
             publish_to_plotter(self)
 
+        # check if path following is recieved the local waypoint
+        if self.mode_flag.is_offboard == True and self.mode_flag.pf_done == False:
             # offboard mode
             self.pub_func_px4.publish_offboard_control_mode(self.offboard_mode)
             self.pub_func_px4.publish_vehicle_command(self.modes.prm_offboard_mode)
-        
+
         if self.mode_flag.pf_done == True and self.mode_flag.is_landed == False:
+            self.mode_flag.is_offboard = False
             self.mode_flag.is_pf = False
             self.pub_func_px4.publish_vehicle_command(self.modes.prm_land_mode)
 
@@ -145,7 +162,7 @@ class PathFollowingTest(Node):
         if self.mode_flag.is_landed == True and self.mode_flag.is_disarmed == False:
             self.pub_func_px4.publish_vehicle_command(self.modes.prm_disarm_mode)    
             self.mode_flag.is_disarmed = True
-            self.get_logger().info('Vehicle is disarmed')        
+            self.get_logger().info('Vehicle is disarmed')     
 
         state_logger(self)
     # endregion
@@ -191,14 +208,24 @@ class PathFollowingTest(Node):
         msg.waypoint_x = self.guid_var.waypoint_x
         msg.waypoint_y = self.guid_var.waypoint_y
         msg.waypoint_z = self.guid_var.waypoint_z
-        self.local_waypoint_publisher_pf.publish(msg)
+        self.local_waypoint_publisher_to_pf.publish(msg)
+
+    def weight_callback(self):
+        self.weight.timestamp = int(Clock().now().nanoseconds / 1000)  # time in microseconds
+        if self.mode_flag.is_offboard == False:
+            self.weight.fusion_weight = 0.0
+        else:
+            self.weight.fusion_weight = 1.0
+        self.pub_func_px4.publish_fusion_weight(self.weight)
+    # endregion
+    # ----------------------------------------------------------------------------------------#
 
 
 def main(args=None):
     rclpy.init(args=args)
-    path_planning_test = PathFollowingTest()
-    rclpy.spin(path_planning_test)
-    path_planning_test.destroy_node()
+    path_planning_path_following_integ_test = PathPlanningPathFollowingIntegTest()
+    rclpy.spin(path_planning_path_following_integ_test)
+    path_planning_path_following_integ_test.destroy_node()
     rclpy.shutdown()
 
 if __name__ == "__main__":

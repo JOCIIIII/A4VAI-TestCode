@@ -17,7 +17,7 @@ from ..lib.publisher import PubFuncHeartbeat, PubFuncPX4, PubFuncModule, PubFunc
 
 class PathFollowingTest(Node):
     def __init__(self):
-        super().__init__("give_global_waypoint")
+        super().__init__("path_following_test")
         # ----------------------------------------------------------------------------------------#
         # region INITIALIZE
         dir = os.path.dirname(os.path.abspath(__file__))
