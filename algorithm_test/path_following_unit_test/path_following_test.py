@@ -32,11 +32,6 @@ class PathFollowingTest(Node):
         self.pub_px4.declareOffboardControlModePublisher()              # Declare PX4 Offboard Control Mode Publisher
         self.pub_px4.declareAttitudeCommandPublisher()                  # Declare PX4 Attitude Command Publisher
 
-        # It has changed to declareAttitudeCommandPublisher
-        # because the attitude offboard mode is not used
-        # only velocity offboard mode is used
-        # self.pub_px4.declareVehicleAttitudeSetpointPublisher()        # Declare PX4 Vehicle Attitude Setpoint Publisher
-
         self.pub_module   = ModulePublisher(self)
         self.pub_module.declareLocalWaypointPublisherToPF()        # Declare Local Waypoint Publisher to Path Following
         self.pub_px4.declareFusionWeightPublisher()
