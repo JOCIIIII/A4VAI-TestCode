@@ -87,7 +87,7 @@ class PathFollowingTest(Node):
     # ----------------------------------------------------------------------------------------#
     # region MAIN CODE
     def offboard_control_main(self):
-
+        self.weight_callback()
         # send offboard mode and arm mode command to px4
         if self.mode_flag.is_standby == True:
             self.mode_flag.is_takeoff = True
@@ -151,7 +151,7 @@ class PathFollowingTest(Node):
             self.weight.fusion_weight = 0.0
         else:
             self.weight.fusion_weight = 1.0
-        self.pub_func_px4.publish_fusion_weight(self.weight)
+        # self.pub_func_px4.publish_fusion_weight(self.weight)
     # endregion
     # ----------------------------------------------------------------------------------------#
 
