@@ -15,7 +15,7 @@ from px4_msgs.msg import TrajectorySetpoint
 from ..lib.common_fuctions import set_initial_variables, state_logger, publish_to_plotter, BodytoNED, set_wp
 from ..lib.publisher import PX4Publisher, HeartbeatPublisher, PlotterPublisher, ModulePublisher
 from ..lib.publisher import PubFuncHeartbeat, PubFuncPX4, PubFuncModule, PubFuncPlotter
-from ..lib.subscriber import PX4Subscriber, CmdSubscriber, HeartbeatSubscriber, MissionSubscriber
+from ..lib.subscriber import PX4Subscriber, CmdSubscriber, HeartbeatSubscriber
 from ..lib.timer import HeartbeatTimer, MainTimer, CommandPubTimer
 # ----------------------------------------------------------------------------------------#
 class CollisionAvoidanceTest(Node):
@@ -69,10 +69,6 @@ class CollisionAvoidanceTest(Node):
 
         self.sub_cmd = CmdSubscriber(self)
         self.sub_cmd.declareCAVelocitySetpointSubscriber(self.veh_vel_set, self.state_var, self.ca_var)
-
-        self.sub_mission = MissionSubscriber(self)
-        self.sub_mission.declareLidarSubscriber(self.state_var, self.guid_var, self.mode_flag, self.ca_var, self.pub_func_module)
-        self.sub_mission.declareDepthSubscriber(self.mode_flag, self.ca_var)
 
         self.sub_hearbeat = HeartbeatSubscriber(self)
         self.sub_hearbeat.declareCollisionAvoidanceHeartbeatSubscriber(self.offboard_var)
