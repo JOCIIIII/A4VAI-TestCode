@@ -48,7 +48,6 @@ class CAPFIntegrationTest(Node):
         self.pub_px4 = PX4Publisher(self)
         self.pub_px4.declareVehicleCommandPublisher()
         self.pub_px4.declareOffboardControlModePublisher()
-        self.pub_px4.declareVehicleAttitudeSetpointPublisher()
         self.pub_px4.declareTrajectorySetpointPublisher()
         self.pub_px4.declareAttitudeCommandPublisher()
         # module data publisher
@@ -271,7 +270,7 @@ class CAPFIntegrationTest(Node):
 
         # self.get_logger().info(f"weight: {self.weight.fusion_weight}")
         self.weight_publisher.publish(self.weight)
-        self.pub_func_px4.publish_att_command(self.veh_att_set, self.mode_flag)
+        self.pub_func_px4.publish_att_command(self.veh_att_set)
 
     def sigmoid(self,t, k=10, t0=1):
         alpha = 1 / (1 + math.exp(-k * (t - t0)))
