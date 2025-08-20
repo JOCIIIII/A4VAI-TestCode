@@ -89,12 +89,13 @@ class CollisionAvoidanceTest(Node):
     # ----------------------------------------------------------------------------------------#
     # region MAIN CODE
     def offboard_control_main(self):
-        if self.offboard_var.ca_heartbeat == True:
+        # if self.offboard_var.ca_heartbeat == True:
 
             # send offboard mode and arm mode command to px4
             if self.mode_flag.is_standby == True:
                 self.mode_flag.is_takeoff = True
                 self.mode_flag.is_standby = False
+                self.get_logger().info('takeoff')
 
             if self.offboard_var.counter == self.offboard_var.flight_start_time and self.mode_flag.is_takeoff == True:
                 # arm cmd to px4
@@ -136,7 +137,7 @@ class CollisionAvoidanceTest(Node):
                 self.pub_func_px4.publish_offboard_control_mode(self.offboard_mode)
                 self.pub_func_px4.publish_vehicle_command(self.modes.prm_offboard_mode)
                 
-        state_logger(self)
+        # state_logger(self)
     # endregion
     # ----------------------------------------------------------------------------------------#
     # region CALCULATION FUNC

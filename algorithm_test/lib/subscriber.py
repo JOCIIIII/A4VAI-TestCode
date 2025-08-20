@@ -173,62 +173,75 @@ def CA2Control_callback(node, veh_vel_set, stateVar, ca_var, msg):
 
 
     
+    
 
-    veh_vel_set.ned_velocity = BodytoNED(veh_vel_set.body_velocity, stateVar.dcm_b2n)
+    # veh_vel_set.ned_velocity = BodytoNED(veh_vel_set.body_velocity, stateVar.dcm_b2n)
 
-    if stateVar.vx_b < 2.0:
-        gain_yawrate = 1.0
-        gain_vy = 1.0
-    elif stateVar.vx_b > 2.0 and stateVar.vx_b < 4.0:
-        gain_yawrate = 0.7  
-        gain_vy = 1.1
-    elif stateVar.vx_b > 4.0 and stateVar.vx_b < 6.0:
-        gain_yawrate = 0.8
-        gain_vy = 1.0
-    elif stateVar.vx_b > 6.0 and stateVar.vx_b < 7.0:
-        gain_yawrate = 0.65
-        gain_vy = 1.0
-    elif stateVar.vx_b > 7.0 and stateVar.vx_b < 8.0:
-        gain_yawrate = 0.5
-        gain_vy = 1.0
-    elif stateVar.vx_b > 8.0 and stateVar.vx_b < 9.0:
-        gain_yawrate = 0.65
-        gain_vy = 1.5
-    elif stateVar.vx_b > 9.0 and stateVar.vx_b < 10.0:
-        gain_yawrate = 0.9
-        gain_vy = 1.5
-    elif stateVar.vx_b > 10.0:
-        gain_yawrate = 0.9
-        gain_vy = 1.5
-
-
+    # # if stateVar.vx_b < 2.0:
+    #     gain_yawrate = 1.0
+    #     gain_vy = 1.0
+    # elif stateVar.vx_b > 2.0 and stateVar.vx_b < 4.0:
+    #     gain_yawrate = 0.7  
+    #     gain_vy = 1.1
+    # elif stateVar.vx_b > 4.0 and stateVar.vx_b < 6.0:
+    #     gain_yawrate = 0.8
+    #     gain_vy = 1.0
+    # elif stateVar.vx_b > 6.0 and stateVar.vx_b < 7.0:
+    #     gain_yawrate = 0.65
+    #     gain_vy = 1.0
+    # elif stateVar.vx_b > 7.0 and stateVar.vx_b < 8.0:
+    #     gain_yawrate = 0.5
+    #     gain_vy = 1.0
+    # elif stateVar.vx_b > 8.0 and stateVar.vx_b < 9.0:
+    #     gain_yawrate = 0.65
+    #     gain_vy = 1.5
+    # elif stateVar.vx_b > 9.0 and stateVar.vx_b < 10.0:
+    #     gain_yawrate = 0.9
+    #     gain_vy = 1.5
+    # elif stateVar.vx_b > 10.0:
+    #     gain_yawrate = 0.9
+    #     gain_vy = 1.5
 
 
-    veh_vel_set.body_velocity = np.array([7.2, (msg.linear.y + ca_var.vy_offset)*gain_vy, msg.linear.z + ca_var.vz_offset])
+
+
+    # veh_vel_set.body_velocity = np.array([7.2, (msg.linear.y + ca_var.vy_offset)*gain_vy, msg.linear.z + ca_var.vz_offset])
 
     
 
 
 
 
-    node.get_logger().info('vx_b: ' + str(stateVar.vx_b))
+    # node.get_logger().info('vx_b: ' + str(stateVar.vx_b))
     
-    veh_vel_set.yawspeed = gain_yawrate*(-msg.angular.z + ca_var.yawrate_offset)
+    # # veh_vel_set.yawspeed = gain_yawrate*(-msg.angular.z + ca_var.yawrate_offset)
 
-    # if veh_vel_set.yawspeed > 1.0:
-    #     veh_vel_set.yawspeed = 1.0
-    # elif veh_vel_set.yawspeed < -1.0:
-    #     veh_vel_set.yawspeed = -1.0
+    # # if veh_vel_set.yawspeed > 1.0:
+    # #     veh_vel_set.yawspeed = 1.0
+    # # elif veh_vel_set.yawspeed < -1.0:
+    # #     veh_vel_set.yawspeed = -1.0
 
 
-    node.get_logger().info('veh_vel_set.yawspeed: ' + str(veh_vel_set.yawspeed))
-    node.get_logger().info('yaw: ' + str(stateVar.yaw))
+    # node.get_logger().info('veh_vel_set.yawspeed: ' + str(veh_vel_set.yawspeed))
+    # node.get_logger().info('yaw: ' + str(stateVar.yaw))
 
     # logging in csv
-    # node.get_logger().info('vx: ' + str(veh_vel_set.body_velocity[0]))
-    # node.get_logger().info('vy: ' + str(veh_vel_set.body_velocity[1]))
-    # node.get_logger().info('vz: ' + str(veh_vel_set.body_velocity[2]))
-    # node.get_logger().info('veh_vel_set.yawspeed: ' + str(veh_vel_set.yawspeed))
+
+
+    # 0820
+    veh_vel_set.body_velocity = np.array([msg.linear.x, msg.linear.y, msg.linear.z])
+    veh_vel_set.ned_velocity = BodytoNED(veh_vel_set.body_velocity, stateVar.dcm_b2n)
+    veh_vel_set.yawspeed = -msg.angular.z
+
+    # node.get_logger().info('vx: ' + str(msg.linear.x))
+    # node.get_logger().info('vy: ' + str(msg.linear.y))
+    # node.get_logger().info('vz: ' + str(msg.linear.z))
+    # node.get_logger().info('veh_vel_set.yawspeed: ' + str(msg.angular.z))
+
+
+
+
+
 
 # subscribe convey local waypoint complete flag from path following
 def vehicle_local_position_callback(node, msg):
