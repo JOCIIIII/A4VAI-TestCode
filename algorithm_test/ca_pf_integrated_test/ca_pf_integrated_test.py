@@ -79,12 +79,12 @@ class CAPFIntegrationTest(Node):
         # ----------------------------------------------------------------------------------------#
         # region SUBSCRIBERS
         self.sub_px4 = PX4Subscriber(self)
-        self.sub_px4.declareVehicleLocalPositionSubscriber(self.state_var)
-        self.sub_px4.declareVehicleAttitudeSubscriber(self.state_var)
+        self.sub_px4.declareVehicleLocalPositionSubscriber(self)
+        self.sub_px4.declareVehicleAttitudeSubscriber(self)
 
         self.sub_cmd = CmdSubscriber(self)
         self.sub_cmd.declarePFAttitudeSetpointSubscriber(self.veh_att_set)
-        self.sub_cmd.declareCAVelocitySetpointSubscriber(self.veh_vel_set, self.state_var, self.ca_var)
+        self.sub_cmd.declareCAVelocitySetpointSubscriber(self, self.veh_vel_set, self.state_var, self.ca_var)
 
         self.sub_flag = FlagSubscriber(self)
         self.sub_flag.declareConveyLocalWaypointCompleteSubscriber(self.mode_flag)
@@ -188,7 +188,7 @@ class CAPFIntegrationTest(Node):
                 self.mode_flag.is_disarmed = True
                 self.get_logger().info('Vehicle is disarmed')  
             # self.get_logger().info(str(self.ca_var.depth_min_distance))
-            state_logger(self)
+            # state_logger(self)
     # endregion
 
     def flag_callback(self, msg):

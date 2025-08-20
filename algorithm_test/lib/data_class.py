@@ -1,6 +1,7 @@
 import numpy as np
 from cv_bridge import CvBridge
-
+import rclpy
+from rclpy.clock import Clock
 class StateVariable:
     def __init__(self):
         # ned position [m]
@@ -15,21 +16,33 @@ class StateVariable:
         self.vx_b = 0.
         self.vy_b = 0.
         self.vz_b = 0.
-        # attitude [rad]
+        # attitude euler angle [rad]
         self.roll = 0.
         self.pitch = 0.
         self.yaw = 0.
-        
+        # attitude quaternion
+        self.q = [0., 0., 0., 0.]
+
+        # DCM matrix
         self.dcm_b2n = np.zeros((3, 3))
         self.dcm_n2b = np.zeros((3, 3))
         
 class CollisionAvoidanceVariable:
     def __init__(self):
+        self.clock = Clock()
         self.bridge = CvBridge()
         self.depth_min_distance = 0.
         self.lidar_min_distance = 0.
         self.lidar_counter = 0
         self.sign = 0.
+        self.time = self.clock.now()
+        self.yaw_0 = 135*np.pi/180.
+
+        # Collision Avoidance Velocity Command Offset
+        self.vx_offset = -1.130069137
+        self.vy_offset = -0.08785345405340195
+        self.vz_offset = 0.39943796396255493
+        self.yawrate_offset = 0.13739442825317383
 
 class OffboardVariable:
     def __init__(self):
@@ -80,6 +93,8 @@ class SimulationVariable:
         self.sim_name = sim_name
         self.dir = dir
         self.flight_log = None
+
+
 
 # offboard control mode
 class OffboardControlModeState:

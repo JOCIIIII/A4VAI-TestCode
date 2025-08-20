@@ -128,8 +128,7 @@ def BodytoNED(vel_body_cmd, dcm):
 
 # convert NED frame to Body frame
 def NEDtoBody(vel_ned, dcm):
-    u, v, w = np.array((dcm @ vel_ned).tolist())
-    vel_body = np.array([u, v, w])
+    vel_body = (dcm @ vel_ned).tolist()
     return vel_body
 
 

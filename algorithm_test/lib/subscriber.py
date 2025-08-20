@@ -1,6 +1,8 @@
 # common libraries
 import numpy as np
-
+import math
+import rclpy
+from rclpy.clock import Clock
 # custom libraries
 from .common_fuctions import convert_quaternion2euler, BodytoNED, DCM_from_euler_angle, NEDtoBody
 
@@ -26,20 +28,20 @@ class PX4Subscriber(object):
         self.node = node
 
     # declare vehicle local position subscriber
-    def declareVehicleLocalPositionSubscriber(self, state_var):
+    def declareVehicleLocalPositionSubscriber(self, node):
         self.node.vehicle_local_position_subscriber = self.node.create_subscription(
             VehicleLocalPosition,
             "/fmu/out/vehicle_local_position",
-            lambda msg: vehicle_local_position_callback(state_var, msg),
+            lambda msg: vehicle_local_position_callback(node, msg),
             self.node.qos_profile_px4,
         )
 
     # declare vehicle attitude subscriber
-    def declareVehicleAttitudeSubscriber(self, state_var):
+    def declareVehicleAttitudeSubscriber(self, node):
         self.node.vehicle_attitude_subscriber = self.node.create_subscription(
             VehicleAttitude,
             "/fmu/out/vehicle_attitude",
-            lambda msg: vehicle_attitude_callback(state_var, msg),
+            lambda msg: vehicle_attitude_callback(node, msg),
             self.node.qos_profile_px4,
         )
 
@@ -81,11 +83,11 @@ class CmdSubscriber(object):
         )
     
     # declare collision avoidance velocity setpoint subscriber
-    def declareCAVelocitySetpointSubscriber(self, veh_vel_set, stateVar, ca_var):
+    def declareCAVelocitySetpointSubscriber(self, node, veh_vel_set, stateVar, ca_var):
         self.node.CA_velocity_setpoint_subscriber = self.node.create_subscription(
             Twist,
             "/ca_vel_2_control",
-            lambda msg: CA2Control_callback(veh_vel_set, stateVar, ca_var, msg),
+            lambda msg: CA2Control_callback(node, veh_vel_set, stateVar, ca_var, msg),
             1
         )
 
@@ -161,42 +163,100 @@ def PF_Att2Control_callback(veh_att_set, msg):
     veh_att_set.thrust_body[2] = msg.thrust_body[2]
     
 # update velocity offboard command from collision avoidance
-def CA2Control_callback(veh_vel_set, stateVar, ca_var, msg):
+def CA2Control_callback(node, veh_vel_set, stateVar, ca_var, msg):
 
-    total_body_cmd = np.array([msg.linear.x + 0.8, msg.linear.y, msg.linear.z])
+    # K_p = 1.1
+    # if stateVar.vx_b > 1.0:
+    #     veh_vel_set.body_velocity = np.array([stateVar.vx_b+3, msg.linear.y + ca_var.vy_offset, msg.linear.z + ca_var.vz_offset])
+    # else:
+    #     veh_vel_set.body_velocity = np.array([msg.linear.x, msg.linear.y + ca_var.vy_offset, msg.linear.z + ca_var.vz_offset])
 
-    veh_vel_set.body_velocity = total_body_cmd
+
+    
+
     veh_vel_set.ned_velocity = BodytoNED(veh_vel_set.body_velocity, stateVar.dcm_b2n)
-    if abs(msg.angular.z) > np.deg2rad(45):
-        ca_var.sign = np.sign(-msg.angular.z)
-    veh_vel_set.yawspeed = -msg.angular.z + np.deg2rad(7) + ca_var.sign*np.deg2rad(5)
+
+    if stateVar.vx_b < 2.0:
+        gain_yawrate = 1.0
+        gain_vy = 1.0
+    elif stateVar.vx_b > 2.0 and stateVar.vx_b < 4.0:
+        gain_yawrate = 0.7  
+        gain_vy = 1.1
+    elif stateVar.vx_b > 4.0 and stateVar.vx_b < 6.0:
+        gain_yawrate = 0.8
+        gain_vy = 1.0
+    elif stateVar.vx_b > 6.0 and stateVar.vx_b < 7.0:
+        gain_yawrate = 0.65
+        gain_vy = 1.0
+    elif stateVar.vx_b > 7.0 and stateVar.vx_b < 8.0:
+        gain_yawrate = 0.5
+        gain_vy = 1.0
+    elif stateVar.vx_b > 8.0 and stateVar.vx_b < 9.0:
+        gain_yawrate = 0.65
+        gain_vy = 1.5
+    elif stateVar.vx_b > 9.0 and stateVar.vx_b < 10.0:
+        gain_yawrate = 0.9
+        gain_vy = 1.5
+    elif stateVar.vx_b > 10.0:
+        gain_yawrate = 0.9
+        gain_vy = 1.5
+
+
+
+
+    veh_vel_set.body_velocity = np.array([7.2, (msg.linear.y + ca_var.vy_offset)*gain_vy, msg.linear.z + ca_var.vz_offset])
+
+    
+
+
+
+
+    node.get_logger().info('vx_b: ' + str(stateVar.vx_b))
+    
+    veh_vel_set.yawspeed = gain_yawrate*(-msg.angular.z + ca_var.yawrate_offset)
+
+    # if veh_vel_set.yawspeed > 1.0:
+    #     veh_vel_set.yawspeed = 1.0
+    # elif veh_vel_set.yawspeed < -1.0:
+    #     veh_vel_set.yawspeed = -1.0
+
+
+    node.get_logger().info('veh_vel_set.yawspeed: ' + str(veh_vel_set.yawspeed))
+    node.get_logger().info('yaw: ' + str(stateVar.yaw))
+
+    # logging in csv
+    # node.get_logger().info('vx: ' + str(veh_vel_set.body_velocity[0]))
+    # node.get_logger().info('vy: ' + str(veh_vel_set.body_velocity[1]))
+    # node.get_logger().info('vz: ' + str(veh_vel_set.body_velocity[2]))
+    # node.get_logger().info('veh_vel_set.yawspeed: ' + str(veh_vel_set.yawspeed))
 
 # subscribe convey local waypoint complete flag from path following
-def vehicle_local_position_callback(state_var, msg):
+def vehicle_local_position_callback(node, msg):
     # update NED position
-    state_var.x = msg.x
-    state_var.y = msg.y
-    state_var.z = -msg.z
+    node.state_var.x = msg.x
+    node.state_var.y = msg.y
+    node.state_var.z = -msg.z
     
     # update NED velocity
-    state_var.vx_n = msg.vx
-    state_var.vy_n = msg.vy
-    state_var.vz_n = -msg.vz
+    node.state_var.vx_n = msg.vx
+    node.state_var.vy_n = msg.vy
+    node.state_var.vz_n = -msg.vz
 
-    vel_n = np.array([state_var.vx_n, state_var.vy_n, state_var.vz_n])
-    vel_b = NEDtoBody(vel_n, state_var.dcm_b2n)
+    vel_n = np.array([msg.vx, msg.vy, msg.vz])
+    vel_b = NEDtoBody(vel_n, node.state_var.dcm_n2b)
 
-    state_var.vx_b = vel_b[0]
-    state_var.vy_b = vel_b[1]
-    state_var.vz_b = vel_b[2]
+    node.state_var.vx_b = vel_b[0]
+    node.state_var.vy_b = vel_b[1]
+    node.state_var.vz_b = vel_b[2]
 
 # update attitude from vehicle attitude
-def vehicle_attitude_callback(state_var, msg):
-    state_var.phi, state_var.theta, state_var.psi = convert_quaternion2euler(
+def vehicle_attitude_callback(node, msg):
+    # node.state_var.q = [msg.q[0], msg.q[1], msg.q[2], msg.q[3]]
+    node.state_var.roll, node.state_var.pitch, node.state_var.yaw = convert_quaternion2euler(
         msg.q[0], msg.q[1], msg.q[2], msg.q[3]
     )
-    state_var.dcm_n2b = DCM_from_euler_angle([state_var.phi, state_var.theta, state_var.psi])
-    state_var.dcm_b2n = state_var.dcm_n2b.T
+    node.state_var.dcm_n2b = DCM_from_euler_angle(np.array([node.state_var.roll, node.state_var.pitch, node.state_var.yaw]))
+    node.state_var.dcm_b2n = node.state_var.dcm_n2b.T
 
 # update heading waypoint index
 def heading_wp_idx_callback(guid_var, msg):

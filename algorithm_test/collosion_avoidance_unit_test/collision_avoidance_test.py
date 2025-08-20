@@ -7,7 +7,6 @@ import os
 # ROS libraries
 import rclpy
 from rclpy.node import Node
-from rclpy.clock import Clock
 # ----------------------------------------------------------------------------------------#
 # PX4 msgs libraries
 from px4_msgs.msg import TrajectorySetpoint
@@ -64,11 +63,11 @@ class CollisionAvoidanceTest(Node):
         # ----------------------------------------------------------------------------------------#
         # region SUBSCRIBERS
         self.sub_px4 = PX4Subscriber(self)
-        self.sub_px4.declareVehicleLocalPositionSubscriber(self.state_var)
-        self.sub_px4.declareVehicleAttitudeSubscriber(self.state_var)
+        self.sub_px4.declareVehicleLocalPositionSubscriber(self)
+        self.sub_px4.declareVehicleAttitudeSubscriber(self)
 
         self.sub_cmd = CmdSubscriber(self)
-        self.sub_cmd.declareCAVelocitySetpointSubscriber(self.veh_vel_set, self.state_var, self.ca_var)
+        self.sub_cmd.declareCAVelocitySetpointSubscriber(self, self.veh_vel_set, self.state_var, self.ca_var)
 
         self.sub_hearbeat = HeartbeatSubscriber(self)
         self.sub_hearbeat.declareCollisionAvoidanceHeartbeatSubscriber(self.offboard_var)
@@ -131,12 +130,8 @@ class CollisionAvoidanceTest(Node):
                 else:
                     self.mode_flag.is_manual = False
 
-                if self.mode_flag.is_manual:
-                    self.get_logger().info("Going to designated position")
-                else:
-                    self.get_logger().info("Collision avoidance mode")
                     
-                self.get_logger().info(str(self.veh_vel_set.ned_velocity))
+                # self.get_logger().info(str(self.veh_vel_set.ned_velocity))
 
                 self.pub_func_px4.publish_offboard_control_mode(self.offboard_mode)
                 self.pub_func_px4.publish_vehicle_command(self.modes.prm_offboard_mode)
@@ -146,9 +141,10 @@ class CollisionAvoidanceTest(Node):
     # ----------------------------------------------------------------------------------------#
     # region CALCULATION FUNC
     def set_forward_cmd(self):
-        self.veh_vel_set.body_velocity = np.array([3, 0, 0])
+        self.veh_vel_set.body_velocity = np.array([8, 0, 0])
         self.veh_vel_set.ned_velocity = BodytoNED(self.veh_vel_set.body_velocity, self.state_var.dcm_b2n)
-        self.veh_vel_set.yaw = 135.0 * np.pi / 180.0
+        self.veh_vel_set.yaw = self.ca_var.yaw_0
+        self.get_logger().info('yaw: ' + str(self.veh_vel_set.yaw))
     # endregion
     # ----------------------------------------------------------------------------------------#
 
