@@ -83,11 +83,11 @@ class CmdSubscriber(object):
         )
     
     # declare collision avoidance velocity setpoint subscriber
-    def declareCAVelocitySetpointSubscriber(self, node, veh_vel_set, stateVar, ca_var):
+    def declareCAVelocitySetpointSubscriber(self):
         self.node.CA_velocity_setpoint_subscriber = self.node.create_subscription(
             Twist,
             "/ca_vel_2_control",
-            lambda msg: CA2Control_callback(node, veh_vel_set, stateVar, ca_var, msg),
+            lambda msg: CA2Control_callback(self.node, msg),
             1
         )
 
@@ -129,11 +129,11 @@ class HeartbeatSubscriber(object):
         )
 
     # declare collision avoidance heartbeat subscriber
-    def declareCollisionAvoidanceHeartbeatSubscriber(self, offboard_var):
+    def declareCollisionAvoidanceHeartbeatSubscriber(self):
         self.node.collision_avoidance_heartbeat_subscriber = self.node.create_subscription(
             Bool,
             "/collision_avoidance_heartbeat",
-            lambda msg: collision_avoidance_heartbeat_callback(offboard_var, msg),
+            lambda msg: collision_avoidance_heartbeat_callback(self.node, msg),
             1,
         )
 
@@ -164,7 +164,7 @@ def PF_Att2Control_callback(node, msg):
     node.veh_att_set.thrust_body[2] = msg.thrust_body[2]
     
 # update velocity offboard command from collision avoidance
-def CA2Control_callback(node, veh_vel_set, stateVar, ca_var, msg):
+def CA2Control_callback(node, msg):
 
     # K_p = 1.1
     # if stateVar.vx_b > 1.0:
@@ -198,41 +198,16 @@ def CA2Control_callback(node, veh_vel_set, stateVar, ca_var, msg):
     #     gain_vy = 1.5
     # elif stateVar.vx_b > 9.0 and stateVar.vx_b < 10.0:
     #     gain_yawrate = 0.9
-    #     gain_vy = 1.5
-    # elif stateVar.vx_b > 10.0:
-    #     gain_yawrate = 0.9
-    #     gain_vy = 1.5
 
 
 
 
-    # veh_vel_set.body_velocity = np.array([7.2, (msg.linear.y + ca_var.vy_offset)*gain_vy, msg.linear.z + ca_var.vz_offset])
-
-    
-
-
-
-
-    # node.get_logger().info('vx_b: ' + str(stateVar.vx_b))
-    
-    # # veh_vel_set.yawspeed = gain_yawrate*(-msg.angular.z + ca_var.yawrate_offset)
-
-    # # if veh_vel_set.yawspeed > 1.0:
-    # #     veh_vel_set.yawspeed = 1.0
-    # # elif veh_vel_set.yawspeed < -1.0:
-    # #     veh_vel_set.yawspeed = -1.0
-
-
-    # node.get_logger().info('veh_vel_set.yawspeed: ' + str(veh_vel_set.yawspeed))
-    # node.get_logger().info('yaw: ' + str(stateVar.yaw))
-
-    # logging in csv
 
 
     # 0820
-    veh_vel_set.body_velocity = np.array([msg.linear.x, msg.linear.y, msg.linear.z])
-    veh_vel_set.ned_velocity = BodytoNED(veh_vel_set.body_velocity, stateVar.dcm_b2n)
-    veh_vel_set.yawspeed = -msg.angular.z
+    node.veh_vel_set.body_velocity = np.array([msg.linear.x, msg.linear.y, msg.linear.z])
+    node.veh_vel_set.ned_velocity = BodytoNED(node.veh_vel_set.body_velocity, node.state_var.dcm_b2n)
+    node.veh_vel_set.yawspeed = -msg.angular.z
 
     # node.get_logger().info('vx: ' + str(msg.linear.x))
     # node.get_logger().info('vy: ' + str(msg.linear.y))
@@ -293,11 +268,11 @@ def path_planning_heartbeat_callback(offboard_var, msg):
     offboard_var.pp_heartbeat = msg.data
 
 # update collision avoidance heartbeat
-def collision_avoidance_heartbeat_callback(offboard_var, msg):
-    offboard_var.ca_heartbeat = msg.data
+def collision_avoidance_heartbeat_callback(node, msg):
+    node.offboard_var.ca_heartbeat = msg.data
 
 # update path following heartbeat
-def path_following_heartbeat_callback(offboard_var, msg):
-    offboard_var.pf_heartbeat = msg.data
+def path_following_heartbeat_callback(node, msg):
+    node.offboard_var.pf_heartbeat = msg.data
 # endregion
 #-------------------------------------------------------------------------------------------#

@@ -57,30 +57,30 @@ class CollisionAvoidanceTest(Node):
         # region PUB FUNC
         self.pub_func_heartbeat = PubFuncHeartbeat(self)
         self.pub_func_px4       = PubFuncPX4(self)
-        self.pub_func_module  = PubFuncModule(self)
+        self.pub_func_module    = PubFuncModule(self)
         self.pub_func_plotter   = PubFuncPlotter(self)
         # endregion
         # ----------------------------------------------------------------------------------------#
         # region SUBSCRIBERS
         self.sub_px4 = PX4Subscriber(self)
-        self.sub_px4.declareVehicleLocalPositionSubscriber(self)
-        self.sub_px4.declareVehicleAttitudeSubscriber(self)
+        self.sub_px4.declareVehicleLocalPositionSubscriber()
+        self.sub_px4.declareVehicleAttitudeSubscriber()
 
         self.sub_cmd = CmdSubscriber(self)
-        self.sub_cmd.declareCAVelocitySetpointSubscriber(self, self.veh_vel_set, self.state_var, self.ca_var)
+        self.sub_cmd.declareCAVelocitySetpointSubscriber()
 
         self.sub_hearbeat = HeartbeatSubscriber(self)
-        self.sub_hearbeat.declareCollisionAvoidanceHeartbeatSubscriber(self.offboard_var)
+        self.sub_hearbeat.declareCollisionAvoidanceHeartbeatSubscriber()
         # endregion
         # ----------------------------------------------------------------------------------------#
         # region TIMER
-        self.timer_offboard_control = MainTimer(self, self.offboard_var)
+        self.timer_offboard_control = MainTimer(self)
         self.timer_offboard_control.declareOffboardControlTimer(self.offboard_control_main)
 
-        self.timer_cmd = CommandPubTimer(self, self.offboard_var)
-        self.timer_cmd.declareOffboardVelocityControlTimer(self.mode_flag, self.veh_vel_set, self.pub_func_px4)
+        self.timer_cmd = CommandPubTimer(self)
+        self.timer_cmd.declareOffboardVelocityControlTimer()
 
-        self.timer_heartbeat = HeartbeatTimer(self, self.offboard_var, self.pub_func_heartbeat)
+        self.timer_heartbeat = HeartbeatTimer(self)
         self.timer_heartbeat.declareControllerHeartbeatTimer()
         self.timer_heartbeat.declarePathPlanningHeartbeatTimer()
         self.timer_heartbeat.declarePathFollowingHeartbeatTimer()
