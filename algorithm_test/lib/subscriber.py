@@ -28,20 +28,20 @@ class PX4Subscriber(object):
         self.node = node
 
     # declare vehicle local position subscriber
-    def declareVehicleLocalPositionSubscriber(self, node):
+    def declareVehicleLocalPositionSubscriber(self):
         self.node.vehicle_local_position_subscriber = self.node.create_subscription(
             VehicleLocalPosition,
             "/fmu/out/vehicle_local_position",
-            lambda msg: vehicle_local_position_callback(node, msg),
+            lambda msg: vehicle_local_position_callback(self.node, msg),
             self.node.qos_profile_px4,
         )
 
     # declare vehicle attitude subscriber
-    def declareVehicleAttitudeSubscriber(self, node):
+    def declareVehicleAttitudeSubscriber(self):
         self.node.vehicle_attitude_subscriber = self.node.create_subscription(
             VehicleAttitude,
             "/fmu/out/vehicle_attitude",
-            lambda msg: vehicle_attitude_callback(node, msg),
+            lambda msg: vehicle_attitude_callback(self.node, msg),
             self.node.qos_profile_px4,
         )
 
@@ -51,20 +51,20 @@ class FlagSubscriber(object):
         self.node = node
 
     # declare convey local waypoint complete subscriber
-    def declareConveyLocalWaypointCompleteSubscriber(self, mode_flag):
+    def declareConveyLocalWaypointCompleteSubscriber(self):
         self.node.convey_local_waypoint_complete_subscriber = self.node.create_subscription(
             ConveyLocalWaypointComplete,
             "/convey_local_waypoint_complete",
-            lambda msg: convey_local_waypoint_complete_call_back(mode_flag, msg),
+            lambda msg: convey_local_waypoint_complete_call_back(self.node, msg),
             1,
         )
 
     # declare path following complete subscriber
-    def declarePFCompleteSubscriber(self, mode_flag):
+    def declarePFCompleteSubscriber(self):
         self.node.pf_complete_subscriber = self.node.create_subscription(
             Bool,
             "/path_following_complete",
-            lambda msg: pf_complete_callback(mode_flag, msg),
+            lambda msg: pf_complete_callback(self.node, msg),
             1,
         )
 
@@ -74,11 +74,11 @@ class CmdSubscriber(object):
         self.node = node
 
     # declare path following attitude setpoint subscriber
-    def declarePFAttitudeSetpointSubscriber(self, veh_att_set):
+    def declarePFAttitudeSetpointSubscriber(self):
         self.node.PF_attitude_setpoint_subscriber = self.node.create_subscription(
             VehicleAttitudeSetpoint,
             "/pf_att_2_control",
-            lambda msg: PF_Att2Control_callback(veh_att_set, msg),
+            lambda msg: PF_Att2Control_callback(self.node, msg),
             1,
         )
     
@@ -97,11 +97,11 @@ class EtcSubscriber(object):
         self.node = node
 
     # declare heading waypoint index subscriber
-    def declareHeadingWPIdxSubscriber(self, guid_var):
+    def declareHeadingWPIdxSubscriber(self):
         self.node.heading_wp_idx_subscriber = self.node.create_subscription(
             Int32,
             "/heading_waypoint_index",
-            lambda msg: heading_wp_idx_callback(guid_var, msg),
+            lambda msg: heading_wp_idx_callback(self.node, msg),
             1,
         )
 
@@ -149,18 +149,19 @@ class HeartbeatSubscriber(object):
 #-------------------------------------------------------------------------------------------#
 # region: CALLBACK FUNCTIONS
 # update attitude offboard command from path following
-def PF_Att2Control_callback(veh_att_set, msg):
-    veh_att_set.roll_body = msg.roll_body
-    veh_att_set.pitch_body = msg.pitch_body
-    veh_att_set.yaw_body = msg.yaw_body
-    veh_att_set.yaw_sp_move_rate = msg.yaw_sp_move_rate
-    veh_att_set.q_d[0] = msg.q_d[0]
-    veh_att_set.q_d[1] = msg.q_d[1]
-    veh_att_set.q_d[2] = msg.q_d[2]
-    veh_att_set.q_d[3] = msg.q_d[3]
-    veh_att_set.thrust_body[0] = msg.thrust_body[0]
-    veh_att_set.thrust_body[1] = msg.thrust_body[1]
-    veh_att_set.thrust_body[2] = msg.thrust_body[2]
+def PF_Att2Control_callback(node, msg):
+    node.veh_att_set = node.veh_att_set
+    node.veh_att_set.roll_body = msg.roll_body
+    node.veh_att_set.pitch_body = msg.pitch_body
+    node.veh_att_set.yaw_body = msg.yaw_body
+    node.veh_att_set.yaw_sp_move_rate = msg.yaw_sp_move_rate
+    node.veh_att_set.q_d[0] = msg.q_d[0]
+    node.veh_att_set.q_d[1] = msg.q_d[1]
+    node.veh_att_set.q_d[2] = msg.q_d[2]
+    node.veh_att_set.q_d[3] = msg.q_d[3]
+    node.veh_att_set.thrust_body[0] = msg.thrust_body[0]
+    node.veh_att_set.thrust_body[1] = msg.thrust_body[1]
+    node.veh_att_set.thrust_body[2] = msg.thrust_body[2]
     
 # update velocity offboard command from collision avoidance
 def CA2Control_callback(node, veh_vel_set, stateVar, ca_var, msg):
@@ -272,16 +273,16 @@ def vehicle_attitude_callback(node, msg):
     node.state_var.dcm_b2n = node.state_var.dcm_n2b.T
 
 # update heading waypoint index
-def heading_wp_idx_callback(guid_var, msg):
-    guid_var.cur_wp = msg.data
+def heading_wp_idx_callback(node, msg):
+    node.guid_var.cur_wp = msg.data
 
 # update path following complete flag
-def pf_complete_callback(mode_flag, msg):
-    mode_flag.pf_done = msg.data
+def pf_complete_callback(node, msg):
+    node.mode_flag.pf_done = msg.data
 
 # update convey local waypoint complete flag
-def convey_local_waypoint_complete_call_back(mode_flag, msg):
-    mode_flag.pf_recieved_lw = msg.convey_local_waypoint_is_complete
+def convey_local_waypoint_complete_call_back(node, msg):
+    node.mode_flag.pf_recieved_lw = msg.convey_local_waypoint_is_complete
 
 # update controller heartbeat
 def controller_heartbeat_callback(offboard_var, msg):
