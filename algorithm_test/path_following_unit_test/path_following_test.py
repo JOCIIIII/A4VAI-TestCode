@@ -50,7 +50,7 @@ class PathFollowingTest(Node):
         # ----------------------------------------------------------------------------------------#
         # region SUBSCRIBERS
         self.sub_px4 = PX4Subscriber(self)
-        self.sub_px4.declareVehicleLocalPositionSubscriber(self.state_var)          # Declare Vehicle Local Position Subscriber
+        self.sub_px4.declareVehicleLocalPositionSubscriber(self)          # Declare Vehicle Local Position Subscriber
 
         self.sub_cmd = CmdSubscriber(self)
         self.sub_cmd.declarePFAttitudeSetpointSubscriber(self.veh_att_set)          # Declare Path Following Attitude Setpoint Subscriber
