@@ -27,6 +27,7 @@ from px4_msgs.msg import FusionWeight
 class CAPFIntegrationTest(Node):
     def __init__(self):
         super().__init__("ca_pf_integ_test")
+
         self.weight = FusionWeight()
         self.current_target = 0.0  # 0 (ca) or 1 (pf)
         self.prev_target = 0.0
@@ -48,8 +49,10 @@ class CAPFIntegrationTest(Node):
         self.pub_px4 = PX4Publisher(self)
         self.pub_px4.declareVehicleCommandPublisher()
         self.pub_px4.declareOffboardControlModePublisher()
+        self.pub_px4.declareAttitudeCommandPublisher()                  # Declare PX4 Attitude Command Publisher
+        self.pub_px4.declareFusionWeightPublisher() 
         self.pub_px4.declareTrajectorySetpointPublisher()
-        self.pub_px4.declareAttitudeCommandPublisher()
+
         # module data publisher
         self.pub_module = ModulePublisher(self)
         self.pub_module.declareLocalWaypointPublisherToPF()
@@ -60,13 +63,16 @@ class CAPFIntegrationTest(Node):
         self.pub_heartbeat = HeartbeatPublisher(self)
         self.pub_heartbeat.declareControllerHeartbeatPublisher()
         self.pub_heartbeat.declarePathPlanningHeartbeatPublisher()
-        # plotter publisher
-        self.pub_plotter = PlotterPublisher(self)
-        self.pub_plotter.declareGlobalWaypointPublisherToPlotter()
-        self.pub_plotter.declareLocalWaypointPublisherToPlotter()
-        self.pub_plotter.declareHeadingPublisherToPlotter()
-        self.pub_plotter.declareStatePublisherToPlotter()
-        self.pub_plotter.declareMinDistancePublisherToPlotter()
+        self.pub_heartbeat.declareCollisionAvoidanceHeartbeatPublisher()
+
+        # Todo: plotter will be replaced with fox glove
+        # # plotter publisher
+        # self.pub_plotter = PlotterPublisher(self)
+        # self.pub_plotter.declareGlobalWaypointPublisherToPlotter()
+        # self.pub_plotter.declareLocalWaypointPublisherToPlotter()
+        # self.pub_plotter.declareHeadingPublisherToPlotter()
+        # self.pub_plotter.declareStatePublisherToPlotter()
+        # self.pub_plotter.declareMinDistancePublisherToPlotter()
         # endregion
         # ----------------------------------------------------------------------------------------#
         # region PUB FUNC
@@ -75,128 +81,136 @@ class CAPFIntegrationTest(Node):
         self.pub_func_module  = PubFuncModule(self)
         self.pub_func_plotter   = PubFuncPlotter(self)
         # endregion
-        self.weight_publisher = self.create_publisher(FusionWeight, '/fmu/in/fusion_weight', self.qos_profile_px4)
         # ----------------------------------------------------------------------------------------#
         # region SUBSCRIBERS
         self.sub_px4 = PX4Subscriber(self)
-        self.sub_px4.declareVehicleLocalPositionSubscriber(self)
-        self.sub_px4.declareVehicleAttitudeSubscriber(self)
+        self.sub_px4.declareVehicleLocalPositionSubscriber()
+        self.sub_px4.declareVehicleAttitudeSubscriber()
 
         self.sub_cmd = CmdSubscriber(self)
-        self.sub_cmd.declarePFAttitudeSetpointSubscriber(self.veh_att_set)
-        self.sub_cmd.declareCAVelocitySetpointSubscriber(self, self.veh_vel_set, self.state_var, self.ca_var)
+        self.sub_cmd.declarePFAttitudeSetpointSubscriber()
+        self.sub_cmd.declareCAVelocitySetpointSubscriber()
 
         self.sub_flag = FlagSubscriber(self)
-        self.sub_flag.declareConveyLocalWaypointCompleteSubscriber(self.mode_flag)
-        self.sub_flag.declarePFCompleteSubscriber(self.mode_flag)
+        self.sub_flag.declareConveyLocalWaypointCompleteSubscriber()
+        self.sub_flag.declarePFCompleteSubscriber()
 
         self.sub_etc = EtcSubscriber(self)
-        self.sub_etc.declareHeadingWPIdxSubscriber(self.guid_var)
+        self.sub_etc.declareHeadingWPIdxSubscriber()
 
         self.sub_hearbeat = HeartbeatSubscriber(self)
-        self.sub_hearbeat.declareCollisionAvoidanceHeartbeatSubscriber(self.offboard_var)
-        self.sub_hearbeat.declarePathFollowingHeartbeatSubscriber(self.offboard_var)
+        # Todo : Collision Avoidance Hearbeat need to be added
+        # self.sub_hearbeat.declareCollisionAvoidanceHeartbeatSubscriber()
+        self.sub_hearbeat.declarePathFollowingHeartbeatSubscriber()
         # endregion
         # ----------------------------------------------------------------------------------------#
         # region TIMER
-        self.timer_offboard_control = MainTimer(self, self.offboard_var)
+        self.timer_offboard_control = MainTimer(self)
         self.timer_offboard_control.declareOffboardControlTimer(self.offboard_control_main)
 
-        self.timer_cmd = CommandPubTimer(self, self.offboard_var)
-        # self.timer_cmd.declareOffboardAttitudeControlTimer(self.mode_flag, self.veh_att_set, self.pub_func_px4)
-        self.timer_cmd.declareOffboardVelocityControlTimer(self.mode_flag, self.veh_vel_set, self.pub_func_px4)
+        self.timer_cmd = CommandPubTimer(self)
+        self.timer_cmd.declareAttitudeCommandTimer()
+        self.timer_cmd.declareFusionWeightTimer()
+        self.timer_cmd.declareOffboardVelocityControlTimer()
 
-        self.timer_heartbeat = HeartbeatTimer(self, self.offboard_var, self.pub_func_heartbeat)
+        self.timer_heartbeat = HeartbeatTimer(self)
         self.timer_heartbeat.declareControllerHeartbeatTimer()
         self.timer_heartbeat.declarePathPlanningHeartbeatTimer()
-        # weight timer
-        self.timer_weight = self.create_timer(0.03, self.weight_callback)
+        self.timer_heartbeat.declareCollisionAvoidanceHeartbeatTimer()
         # endregion
     # --------------------------------------------------------------------------------------------#
     # region MAIN CODE
     def offboard_control_main(self):
-        # self.get_logger().info(str(self.guid_var.waypoint_x))
-        if self.offboard_var.ca_heartbeat == True and self.offboard_var.pf_heartbeat == True:
+        # Todo : Offboard Control start after all heartbeat is received
+        # if self.offboard_var.ca_heartbeat == True and self.offboard_var.pf_heartbeat == True:
             
-            # send offboard mode and arm mode command to px4
-            if self.mode_flag.is_standby == True:
-                self.mode_flag.is_takeoff = True
-                self.mode_flag.is_standby = False
+        # send offboard mode and arm mode command to px4
+        if self.mode_status.DISARM == True:
+            self.get_logger().info('Mode Status : TAKEOFF')
+            self.mode_status.TAKEOFF = True
+            self.mode_status.DISARM = False
+        
+        if self.offboard_var.counter == self.offboard_var.flight_start_time and self.mode_status.TAKEOFF == True:
+            # send arm cmd to px4
+            self.pub_func_px4.publish_vehicle_command(self.modes.prm_arm_mode)
+            # send takeoff mode cmd to px4
+            self.pub_func_px4.publish_vehicle_command(self.modes.prm_takeoff_mode)
+
+        # increment counter until the flight start time
+        elif self.offboard_var.counter <= self.offboard_var.flight_start_time:
+            self.offboard_var.counter += 1
+
+        # check if the vehicle is ready to initial position
+        if self.mode_status.TAKEOFF == True and self.state_var.z > self.guid_var.init_pos[2]:
+            self.mode_status.TAKEOFF = False
+            self.flags.path_planning = True
+            self.get_logger().info('Vehicle is reached to initial position')
+            set_wp(self)
+
+        if self.flags.path_planning == True:
+            self.pub_func_module.local_waypoint_publish(True)
+            self.pub_func_px4.publish_vehicle_command(self.modes.prm_position_mode)
+        
+        if self.flags.pf_get_local_waypoint == True and self.mode_status.OFFBOARD == False:
+            self.flags.path_planning = False
+            self.mode_status.OFFBOARD = True
+            self.mode_status.PATH_FOLLOWING = True
+            self.get_logger().info('Vehicle is reached to initial position')
+            self.get_logger().info('Mode Status : OFFBOARD/Path Following')
+
+        # check if path following is recieved the local waypoint
+        if self.mode_status.OFFBOARD == True and self.flags.pf_done == False:
+            if self.initial_setting == False:
+                self.initial_setting = True
+                self.offboard_mode.attitude = False
+                self.offboard_mode.velocity = True
+                self.current_target = 1.0  # 0 (ca) or 1 (pf)
+                self.prev_target = 1.0
+                self.weight.fusion_weight = float(1.0)
+
+            self.pub_func_module.publish_flags()
+
+            if self.mode_status.PATH_FOLLOWING == True:
+                self.current_target = 1.0
             
-            if self.offboard_var.counter == self.offboard_var.flight_start_time and self.mode_flag.is_takeoff == True:
-                # arm cmd to px4
-                self.pub_func_px4.publish_vehicle_command(self.modes.prm_arm_mode)
-                # offboard mode cmd to px4
-                self.pub_func_px4.publish_vehicle_command(self.modes.prm_takeoff_mode)
+            if self.mode_status.COLLISION_AVOIDANCE == True:
+                self.current_target = 0.0
 
-            # takeoff after a certain period of time
-            elif self.offboard_var.counter <= self.offboard_var.flight_start_time:
-                self.offboard_var.counter += 1
-
-            # check if the vehicle is ready to initial position
-            if self.mode_flag.is_takeoff == True and self.state_var.z > self.guid_var.init_pos[2]:
-                self.mode_flag.is_takeoff = False
-                self.mode_flag.is_pp_mode = True
-                self.get_logger().info('Vehicle is reached to initial position')
-                set_wp(self)
-
-            if self.mode_flag.is_pp_mode == True:
-                self.pub_func_module.local_waypoint_publish(True)
-                self.pub_func_px4.publish_vehicle_command(self.modes.prm_position_mode)
+            self.pub_func_px4.publish_offboard_control_mode(self.offboard_mode)
+            self.pub_func_px4.publish_vehicle_command(self.modes.prm_offboard_mode)
             
-            if self.mode_flag.pf_recieved_lw == True and self.mode_flag.is_offboard == False:
-                self.mode_flag.is_pp_mode = False
-                self.mode_flag.is_offboard = True
-                self.mode_flag.is_pf = True
-                self.get_logger().info('Vehicle is in offboard mode')
+        if self.flags.pf_done == True and self.mode_status.LANDING == False:
+            self.get_logger().info('Mode Status : LANDING')
+            self.mode_status.OFFBOARD = False
+            self.mode_status.PATH_FOLLOWING = False
+            self.pub_func_px4.publish_vehicle_command(self.modes.prm_land_mode)
 
-            # check if path following is recieved the local waypoint
-            if self.mode_flag.is_offboard == True and self.mode_flag.pf_done == False:
-                if self.initial_setting == False:
-                    self.initial_setting = True
-                    self.offboard_mode.attitude = False
-                    self.offboard_mode.velocity = True
-                    self.current_target = 1.0  # 0 (ca) or 1 (pf)
-                    self.prev_target = 1.0
-                    self.weight.fusion_weight = float(1.0)
+            # check if the vehicle is landed
+            if np.abs(self.state_var.vz_n) < 0.05 and np.abs(self.state_var.z < 0.05):
+                self.mode_status.LANDING = True
+                self.get_logger().info('Vehicle is landed')
 
-                publish_to_plotter(self)
-                self.pub_func_module.publish_flags()
-
-                if self.mode_flag.is_pf == True:
-                    self.current_target = 1.0
-                
-                if self.mode_flag.is_ca == True:
-                    self.current_target = 0.0
-
-                self.pub_func_px4.publish_offboard_control_mode(self.offboard_mode)
-                self.pub_func_px4.publish_vehicle_command(self.modes.prm_offboard_mode)
-                
-            if self.mode_flag.pf_done == True and self.mode_flag.is_landed == False:
-                self.mode_flag.is_offboard = False
-                self.mode_flag.is_pf = False
-                self.pub_func_px4.publish_vehicle_command(self.modes.prm_land_mode)
-
-                # check if the vehicle is landed
-                if np.abs(self.state_var.vz_n) < 0.05 and np.abs(self.state_var.z < 0.05):
-                    self.mode_flag.is_landed = True
-                    self.get_logger().info('Vehicle is landed')
-
-            # if the vehicle is landed, disarm the vehicle
-            if self.mode_flag.is_landed == True and self.mode_flag.is_disarmed == False:
-                self.pub_func_px4.publish_vehicle_command(self.modes.prm_disarm_mode)    
-                self.mode_flag.is_disarmed = True
-                self.get_logger().info('Vehicle is disarmed')  
-            # self.get_logger().info(str(self.ca_var.depth_min_distance))
-            # state_logger(self)
+        # if the vehicle is landed, disarm the vehicle
+        if self.mode_status.LANDING == True and self.mode_status.is_disarmed == False:
+            self.pub_func_px4.publish_vehicle_command(self.modes.prm_disarm_mode)    
+            self.mode_status.is_disarmed = True
+            self.get_logger().info('Vehicle is disarmed')  
+        # self.get_logger().info(str(self.ca_var.depth_min_distance))
+        # state_logger(self)
     # endregion
 
     def flag_callback(self, msg):
-        # self.get_logger().info(f"Flag received: is_pf: {msg.is_pf}, is_ca: {msg.is_ca}") 씨발 누가 쏘는거야
-        self.mode_flag.is_ca = msg.is_ca
-        self.mode_flag.is_pf = msg.is_pf
-        if self.mode_flag.is_pf == True:
-            self.get_logger().info("is_pf is True")
+        # self.get_logger().info(f"Flag received: PATH_FOLLOWING: {msg.PATH_FOLLOWING}, COLLISION_AVOIDANCE: {msg.COLLISION_AVOIDANCE}") 씨발 누가 쏘는거야
+        
+        
+        # update mode status
+        self.mode_status.COLLISION_AVOIDANCE = msg.collision_avoidance
+        self.mode_status.PATH_FOLLOWING = msg.path_following
+        
+        
+        
+        if self.mode_status.PATH_FOLLOWING == True:
+            self.get_logger().info("PATH_FOLLOWING is True")
             z = self.guid_var.waypoint_z[self.guid_var.cur_wp]
             self.guid_var.waypoint_x = self.guid_var.waypoint_x[self.guid_var.cur_wp:]
             self.guid_var.waypoint_y = self.guid_var.waypoint_y[self.guid_var.cur_wp:]
@@ -221,7 +235,7 @@ class CAPFIntegrationTest(Node):
 
     def weight_callback(self):
         self.weight.timestamp = int(Clock().now().nanoseconds / 1000)  # time in microseconds
-        if self.mode_flag.is_offboard == False:
+        if self.mode_status.OFFBOARD == False:
             self.weight.fusion_weight = float(0.0)
         else:
             self.weight.fusion_weight = float(self.current_target)

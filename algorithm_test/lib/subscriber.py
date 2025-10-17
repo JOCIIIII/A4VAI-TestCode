@@ -111,20 +111,20 @@ class HeartbeatSubscriber(object):
         self.node = node
 
     # declare controller heartbeat subscriber
-    def declareControllerHeartbeatSubscriber(self, offboard_var):
+    def declareControllerHeartbeatSubscriber(self):
         self.node.controller_heartbeat_subscriber = self.node.create_subscription(
             Bool,
             "/controller_heartbeat",
-            lambda msg: controller_heartbeat_callback(offboard_var, msg),
+            lambda msg: controller_heartbeat_callback(self.node, msg),
             1,
         )
 
     # declare path planning heartbeat subscriber
-    def declarePathPlanningHeartbeatSubscriber(self, offboard_var):
+    def declarePathPlanningHeartbeatSubscriber(self):
         self.node.path_planning_heartbeat_subscriber = self.node.create_subscription(
             Bool,
             "/path_planning_heartbeat",
-            lambda msg: path_planning_heartbeat_callback(offboard_var, msg),
+            lambda msg: path_planning_heartbeat_callback(self.node, msg),
             1,
         )
 
@@ -138,11 +138,11 @@ class HeartbeatSubscriber(object):
         )
 
     # declare path following heartbeat subscriber
-    def declarePathFollowingHeartbeatSubscriber(self, offboard_var):
+    def declarePathFollowingHeartbeatSubscriber(self):
         self.node.path_following_heartbeat_subscriber = self.node.create_subscription(
             Bool,
             "/path_following_heartbeat",
-            lambda msg: path_following_heartbeat_callback(offboard_var, msg),
+            lambda msg: path_following_heartbeat_callback(self.node, msg),
             1,
         )
 # endregion
@@ -253,18 +253,18 @@ def heading_wp_idx_callback(node, msg):
 
 # update path following complete flag
 def pf_complete_callback(node, msg):
-    node.mode_flag.pf_done = msg.data
+    node.flags.pf_done = msg.data
 
 # update convey local waypoint complete flag
 def convey_local_waypoint_complete_call_back(node, msg):
-    node.mode_flag.pf_recieved_lw = msg.convey_local_waypoint_is_complete
+    node.flags.pf_get_local_waypoint = msg.convey_local_waypoint_is_complete
 
 # update controller heartbeat
-def controller_heartbeat_callback(offboard_var, msg):
+def controller_heartbeat_callback(node, msg):
     offboard_var.ct_heartbeat = msg.data
 
 # update path planning heartbeat
-def path_planning_heartbeat_callback(offboard_var, msg):
+def path_planning_heartbeat_callback(node, msg):
     offboard_var.pp_heartbeat = msg.data
 
 # update collision avoidance heartbeat

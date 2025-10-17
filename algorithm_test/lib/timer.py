@@ -15,7 +15,7 @@ class CommandPubTimer:
     def declareOffboardVelocityControlTimer(self):
         self.node.velocity_control_call_timer = self.node.create_timer(
             self.node.offboard_var.period_offboard_vel_ctrl,
-            lambda: self.node.pub_func_px4.publish_vehicle_velocity_setpoint(self.node.mode_flag, self.node.veh_vel_set)
+            lambda: self.node.pub_func_px4.publish_vehicle_velocity_setpoint(self.node.mode_status, self.node.veh_vel_set)
         )
     def declareAttitudeCommandTimer(self):
         self.node.attitude_command_call_timer = self.node.create_timer(

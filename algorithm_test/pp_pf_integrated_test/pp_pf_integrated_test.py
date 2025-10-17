@@ -73,14 +73,14 @@ class PathPlanningPathFollowingIntegTest(Node):
         # ----------------------------------------------------------------------------------------#
         # region SUBSCRIBERS
         self.sub_px4 = PX4Subscriber(self)
-        self.sub_px4.declareVehicleLocalPositionSubscriber(self.state_var)
+        self.sub_px4.declareVehicleLocalPositionSubscriber()
 
         self.sub_cmd = CmdSubscriber(self)
-        self.sub_cmd.declarePFAttitudeSetpointSubscriber(self.veh_att_set)
+        self.sub_cmd.declarePFAttitudeSetpointSubscriber()
 
         self.sub_flag = FlagSubscriber(self)
-        self.sub_flag.declareConveyLocalWaypointCompleteSubscriber(self.mode_flag)
-        self.sub_flag.declarePFCompleteSubscriber(self.mode_flag)
+        self.sub_flag.declareConveyLocalWaypointCompleteSubscriber(self.mode_status)
+        self.sub_flag.declarePFCompleteSubscriber(self.mode_status)
 
         self.sub_etc = EtcSubscriber(self)
         self.sub_etc.declareHeadingWPIdxSubscriber(self.guid_var)
@@ -98,8 +98,8 @@ class PathPlanningPathFollowingIntegTest(Node):
         self.timer_offboard_control.declareOffboardControlTimer(self.offboard_control_main)
 
         self.timer_cmd = CommandPubTimer(self, self.offboard_var)
-        # self.timer_cmd.declareOffboardAttitudeControlTimer(self.mode_flag, self.veh_att_set, self.pub_func_px4)
-        self.timer_cmd.declareAttitudeCommandTimer(self.mode_flag, self.veh_att_set, self.pub_func_px4)
+        # self.timer_cmd.declareOffboardAttitudeControlTimer(self.mode_status, self.veh_att_set, self.pub_func_px4)
+        self.timer_cmd.declareAttitudeCommandTimer(self.mode_status, self.veh_att_set, self.pub_func_px4)
         
         self.timer_heartbeat = HeartbeatTimer(self, self.offboard_var, self.pub_func_heartbeat)
         self.timer_heartbeat.declareControllerHeartbeatTimer()
@@ -113,12 +113,12 @@ class PathPlanningPathFollowingIntegTest(Node):
     def offboard_control_main(self):
 
         # send offboard mode and arm mode command to px4
-        if self.mode_flag.is_standby == True:
-            self.mode_flag.is_takeoff = True
-            self.mode_flag.is_standby = False
+        if self.mode_status.DISARM == True:
+            self.mode_status.TAKEOFF = True
+            self.mode_status.DISARM = False
 
         # send offboard mode and arm mode command to px4
-        if self.offboard_var.counter == self.offboard_var.flight_start_time and self.mode_flag.is_takeoff == True:
+        if self.offboard_var.counter == self.offboard_var.flight_start_time and self.mode_status.TAKEOFF == True:
             # arm cmd to px4
             self.pub_func_px4.publish_vehicle_command(self.modes.prm_arm_mode)
             # offboard mode cmd to px4
@@ -129,39 +129,39 @@ class PathPlanningPathFollowingIntegTest(Node):
             self.offboard_var.counter += 1
 
         # check if the vehicle is ready to initial position
-        if self.mode_flag.is_takeoff == True and self.state_var.z > self.guid_var.init_pos[2]:
-            self.mode_flag.is_takeoff = False
+        if self.mode_status.TAKEOFF == True and self.state_var.z > self.guid_var.init_pos[2]:
+            self.mode_status.TAKEOFF = False
         
-        if self.mode_flag.is_takeoff == False and self.mode_flag.pf_recieved_lw == False:
+        if self.mode_status.TAKEOFF == False and self.flags.pf_get_local_waypoint == False:
             self.pub_func_px4.publish_vehicle_command(self.modes.prm_position_mode)
             self.global_waypoint_publish(self.start_point, self.goal_point)
             
         # check if path following is recieved the local waypoint
-        if self.mode_flag.pf_recieved_lw == True and self.mode_flag.pf_done == False:
-            self.mode_flag.is_offboard = True
-            self.mode_flag.is_pf = True
+        if self.flags.pf_get_local_waypoint == True and self.flags.pf_done == False:
+            self.mode_status.OFFBOARD = True
+            self.mode_status.PATH_FOLLOWING = True
             publish_to_plotter(self)
 
         # check if path following is recieved the local waypoint
-        if self.mode_flag.is_offboard == True and self.mode_flag.pf_done == False:
+        if self.mode_status.OFFBOARD == True and self.flags.pf_done == False:
             # offboard mode
             self.pub_func_px4.publish_offboard_control_mode(self.offboard_mode)
             self.pub_func_px4.publish_vehicle_command(self.modes.prm_offboard_mode)
 
-        if self.mode_flag.pf_done == True and self.mode_flag.is_landed == False:
-            self.mode_flag.is_offboard = False
-            self.mode_flag.is_pf = False
+        if self.flags.pf_done == True and self.mode_status.LANDING == False:
+            self.mode_status.OFFBOARD = False
+            self.mode_status.PATH_FOLLOWING = False
             self.pub_func_px4.publish_vehicle_command(self.modes.prm_land_mode)
 
             # check if the vehicle is landed
             if np.abs(self.state_var.vz_n) < 0.05 and np.abs(self.state_var.z < 0.05):
-                self.mode_flag.is_landed = True
+                self.mode_status.LANDING = True
                 self.get_logger().info('Vehicle is landed')
 
         # if the vehicle is landed, disarm the vehicle
-        if self.mode_flag.is_landed == True and self.mode_flag.is_disarmed == False:
+        if self.mode_status.LANDING == True and self.mode_status.is_disarmed == False:
             self.pub_func_px4.publish_vehicle_command(self.modes.prm_disarm_mode)    
-            self.mode_flag.is_disarmed = True
+            self.mode_status.is_disarmed = True
             self.get_logger().info('Vehicle is disarmed')     
 
         state_logger(self)
@@ -176,7 +176,7 @@ class PathPlanningPathFollowingIntegTest(Node):
         self.pub_global_waypoint.publish(msg)
 
     def local_waypoint_callback(self, msg):
-        if self.mode_flag.pf_recieved_lw == False:
+        if self.flags.pf_get_local_waypoint == False:
 
             xy = np.array([msg.waypoint_x, msg.waypoint_y]) # [2 X N]
             
@@ -198,7 +198,7 @@ class PathPlanningPathFollowingIntegTest(Node):
             self.guid_var.real_wp_z = self.guid_var.waypoint_z
 
             self.local_waypoint_publish()
-            self.mode_flag.pf_recieved_lw = True
+            self.flags.pf_get_local_waypoint = True
 
         self.get_logger().info('Local waypoint recieved from path planning')
 
@@ -212,7 +212,7 @@ class PathPlanningPathFollowingIntegTest(Node):
 
     def weight_callback(self):
         self.weight.timestamp = int(Clock().now().nanoseconds / 1000)  # time in microseconds
-        if self.mode_flag.is_offboard == False:
+        if self.mode_status.OFFBOARD == False:
             self.weight.fusion_weight = 0.0
         else:
             self.weight.fusion_weight = 1.0

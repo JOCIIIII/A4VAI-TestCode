@@ -89,12 +89,12 @@ class PathFollowingTest(Node):
     def offboard_control_main(self):
         self.weight_callback()
         # send offboard mode and arm mode command to px4
-        if self.mode_flag.is_standby == True:
-            self.mode_flag.is_takeoff = True
-            self.mode_flag.is_standby = False
+        if self.mode_status.DISARM == True:
+            self.mode_status.TAKEOFF = True
+            self.mode_status.DISARM = False
 
         # send offboard mode and arm mode command to px4
-        if self.offboard_var.counter == self.offboard_var.flight_start_time and self.mode_flag.is_takeoff == True:
+        if self.offboard_var.counter == self.offboard_var.flight_start_time and self.mode_status.TAKEOFF == True:
             # arm cmd to px4
             self.pub_func_px4.publish_vehicle_command(self.modes.prm_arm_mode)
             # offboard mode cmd to px4
@@ -105,46 +105,46 @@ class PathFollowingTest(Node):
             self.offboard_var.counter += 1
 
         # check if the vehicle is ready to initial position
-        if self.mode_flag.is_takeoff == True and self.state_var.z > self.guid_var.init_pos[2]:
-            self.mode_flag.is_takeoff = False
-            self.mode_flag.pf_recieved_lw = True
+        if self.mode_status.TAKEOFF == True and self.state_var.z > self.guid_var.init_pos[2]:
+            self.mode_status.TAKEOFF = False
+            self.flags.pf_get_local_waypoint = True
             
             set_wp(self)
             self.pub_func_module.local_waypoint_publish(True)
             publish_to_plotter(self)
             self.get_logger().info('Vehicle is reached to initial position')
 
-        if self.mode_flag.pf_recieved_lw == True and self.mode_flag.is_offboard == False:
-            self.mode_flag.is_offboard = True
-            self.mode_flag.is_pf = True
+        if self.flags.pf_get_local_waypoint == True and self.mode_status.OFFBOARD == False:
+            self.mode_status.OFFBOARD = True
+            self.mode_status.PATH_FOLLOWING = True
 
         # check if path following is recieved the local waypoint
-        if self.mode_flag.is_offboard == True and self.mode_flag.pf_done == False:
+        if self.mode_status.OFFBOARD == True and self.flags.pf_done == False:
             # offboard mode
             self.pub_func_px4.publish_offboard_control_mode(self.offboard_mode)
             self.pub_func_px4.publish_vehicle_command(self.modes.prm_offboard_mode)
         
-        if self.mode_flag.pf_done == True and self.mode_flag.is_landed == False:
-            self.mode_flag.is_offboard = False
-            self.mode_flag.is_pf = False
+        if self.flags.pf_done == True and self.mode_status.LANDING == False:
+            self.mode_status.OFFBOARD = False
+            self.mode_status.PATH_FOLLOWING = False
             self.pub_func_px4.publish_vehicle_command(self.modes.prm_land_mode)
 
             # check if the vehicle is landed
             if np.abs(self.state_var.vz_n) < 0.05 and np.abs(self.state_var.z < 0.05):
-                self.mode_flag.is_landed = True
+                self.mode_status.LANDING = True
                 self.get_logger().info('Vehicle is landed')
 
         # if the vehicle is landed, disarm the vehicle
-        if self.mode_flag.is_landed == True and self.mode_flag.is_disarmed == False:
+        if self.mode_status.LANDING == True and self.mode_status.is_disarmed == False:
             self.pub_func_px4.publish_vehicle_command(self.modes.prm_disarm_mode)    
-            self.mode_flag.is_disarmed = True
+            self.mode_status.is_disarmed = True
             self.get_logger().info('Vehicle is disarmed')        
 
         state_logger(self)
 
     def weight_callback(self):
         self.weight.timestamp = int(Clock().now().nanoseconds / 1000)  # time in microseconds
-        if self.mode_flag.is_offboard == False:
+        if self.mode_status.OFFBOARD == False:
             self.weight.fusion_weight = 0.0
         else:
             self.weight.fusion_weight = 1.0

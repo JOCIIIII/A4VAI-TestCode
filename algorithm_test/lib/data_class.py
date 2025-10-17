@@ -60,7 +60,7 @@ class OffboardVariable:
 
 class GuidVariable:
     def __init__(self):
-        self.init_pos = np.array([0., 0., 2.5])
+        self.init_pos = np.array([0., 0., 4.0])
         self.waypoint_x = []
         self.waypoint_y = []
         self.waypoint_z = []
@@ -71,23 +71,21 @@ class GuidVariable:
         self.real_wp_z = []
         
 
-class ModeFlag:
-    STANDBY = 0
-    TAKEOFF = 1
+class ModeStatus:
     def __init__(self):
-        self.is_standby         = True       # whether standby mode is activated
-        self.is_takeoff         = False       # whether takeoff is done
-        self.is_pp_mode         = False       # whether path planning mode is activated
-        self.pf_recieved_lw     = False     # whether local waypoint made by path planning is conveyed to path following
-        self.is_offboard        = False        # whether offboard mode is activated
-        self.pf_done            = False            # whether last waypoint is reached
-        self.is_landed          = False          # whether land mode is activated
-        self.is_disarmed        = False        # whether disarmed mode is activated
-        self.is_ca              = False
-        self.is_pf              = False
-        self.foward_clear       = False
-        self.is_manual          = False
-             
+        self.DISARM                 = True 
+        self.TAKEOFF                = False
+        self.OFFBOARD               = False
+        self.COLLISION_AVOIDANCE    = False
+        self.PATH_FOLLOWING         = False
+        self.LANDING                = False
+
+class Flags:
+    def __init__(self):
+        self.path_planning             = False
+        self.pf_get_local_waypoint  = False
+        self.pf_done                = False
+
 class SimulationVariable:
     def __init__(self, sim_name, dir):
         self.sim_name = sim_name

@@ -92,12 +92,12 @@ class CollisionAvoidanceTest(Node):
         # if self.offboard_var.ca_heartbeat == True:
 
             # send offboard mode and arm mode command to px4
-            if self.mode_flag.is_standby == True:
-                self.mode_flag.is_takeoff = True
-                self.mode_flag.is_standby = False
-                self.get_logger().info('takeoff')
+            if self.mode_status.DISARM == True:
+                self.mode_status.TAKEOFF = True
+                self.mode_status.DISARM = False
+                self.get_logger().info('Mode Status : TAKEOFF')
 
-            if self.offboard_var.counter == self.offboard_var.flight_start_time and self.mode_flag.is_takeoff == True:
+            if self.offboard_var.counter == self.offboard_var.flight_start_time and self.mode_status.TAKEOFF == True:
                 # arm cmd to px4
                 self.pub_func_px4.publish_vehicle_command(self.modes.prm_arm_mode)
                 # offboard mode cmd to px4
@@ -108,34 +108,20 @@ class CollisionAvoidanceTest(Node):
                 self.offboard_var.counter += 1
 
             # check if the vehicle is ready to initial position
-            if self.mode_flag.is_takeoff == True and self.state_var.z > self.guid_var.init_pos[2]:
-                self.mode_flag.is_takeoff = False
+            if self.mode_status.TAKEOFF == True and self.state_var.z > self.guid_var.init_pos[2]:
+                self.mode_status.TAKEOFF = False
+                self.get_logger().info('Vehicle is reached to initial position')
+                self.get_logger().info('Mode Status : OFFBOARD/COLLISION_AVOIDANCE')
+                self.mode_status.OFFBOARD = True
+                self.mode_status.COLLISION_AVOIDANCE = True
 
-                self.mode_flag.is_offboard = True
-
+            if self.mode_status.OFFBOARD == True and self.mode_status.COLLISION_AVOIDANCE == True:
                 self.offboard_mode.attitude = False
                 self.offboard_mode.velocity = True
 
-                self.get_logger().info('Vehicle is reached to initial position')
                 self.pub_func_px4.publish_offboard_control_mode(self.offboard_mode)
                 self.pub_func_px4.publish_vehicle_command(self.modes.prm_offboard_mode)
-                set_wp(self)
-    
-            # if the vehicle was taken off send local waypoint to path following and wait in position mode
-            if not self.mode_flag.is_takeoff:
-                
-                # publish_to_plotter(self)
 
-                if not self.mode_flag.is_ca:
-                    self.mode_flag.is_manual = True
-                else:
-                    self.mode_flag.is_manual = False
-
-                    
-                # self.get_logger().info(str(self.veh_vel_set.ned_velocity))
-
-                self.pub_func_px4.publish_offboard_control_mode(self.offboard_mode)
-                self.pub_func_px4.publish_vehicle_command(self.modes.prm_offboard_mode)
                 
         # state_logger(self)
     # endregion
@@ -151,9 +137,9 @@ class CollisionAvoidanceTest(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    path_planning_test = CollisionAvoidanceTest()
-    rclpy.spin(path_planning_test)
-    path_planning_test.destroy_node()
+    collision_avoidance_test = CollisionAvoidanceTest()
+    rclpy.spin(collision_avoidance_test)
+    collision_avoidance_test.destroy_node()
     rclpy.shutdown()
 
 if __name__ == "__main__":
