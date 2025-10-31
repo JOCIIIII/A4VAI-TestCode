@@ -166,57 +166,20 @@ def PF_Att2Control_callback(node, msg):
 # update velocity offboard command from collision avoidance
 def CA2Control_callback(node, msg):
 
-    # K_p = 1.1
-    # if stateVar.vx_b > 1.0:
-    #     veh_vel_set.body_velocity = np.array([stateVar.vx_b+3, msg.linear.y + ca_var.vy_offset, msg.linear.z + ca_var.vz_offset])
-    # else:
-    #     veh_vel_set.body_velocity = np.array([msg.linear.x, msg.linear.y + ca_var.vy_offset, msg.linear.z + ca_var.vz_offset])
+    fuck_vy_gain = 3.0
+    fuck_yaw_gain = 2.0
 
+    if node.flags.rand_point_flag == True:
+        node.veh_vel_set.body_velocity = np.array([3.0, 0.0, 0.0])
+        node.veh_vel_set.yawspeed = 0.0
+    else:
+        node.veh_vel_set.body_velocity = np.array([node.state_var.vx_b, (-msg.linear.y-0.2)*fuck_vy_gain, 0])
+        node.veh_vel_set.yawspeed = -msg.angular.z*fuck_yaw_gain
 
-    
-    
-
-    # veh_vel_set.ned_velocity = BodytoNED(veh_vel_set.body_velocity, stateVar.dcm_b2n)
-
-    # # if stateVar.vx_b < 2.0:
-    #     gain_yawrate = 1.0
-    #     gain_vy = 1.0
-    # elif stateVar.vx_b > 2.0 and stateVar.vx_b < 4.0:
-    #     gain_yawrate = 0.7  
-    #     gain_vy = 1.1
-    # elif stateVar.vx_b > 4.0 and stateVar.vx_b < 6.0:
-    #     gain_yawrate = 0.8
-    #     gain_vy = 1.0
-    # elif stateVar.vx_b > 6.0 and stateVar.vx_b < 7.0:
-    #     gain_yawrate = 0.65
-    #     gain_vy = 1.0
-    # elif stateVar.vx_b > 7.0 and stateVar.vx_b < 8.0:
-    #     gain_yawrate = 0.5
-    #     gain_vy = 1.0
-    # elif stateVar.vx_b > 8.0 and stateVar.vx_b < 9.0:
-    #     gain_yawrate = 0.65
-    #     gain_vy = 1.5
-    # elif stateVar.vx_b > 9.0 and stateVar.vx_b < 10.0:
-    #     gain_yawrate = 0.9
-
-
-
-
-
-
-    # 0820
-    node.veh_vel_set.body_velocity = np.array([msg.linear.x, msg.linear.y, msg.linear.z])
     node.veh_vel_set.ned_velocity = BodytoNED(node.veh_vel_set.body_velocity, node.state_var.dcm_b2n)
-    node.veh_vel_set.yawspeed = -msg.angular.z
-
-    # node.get_logger().info('vx: ' + str(msg.linear.x))
-    # node.get_logger().info('vy: ' + str(msg.linear.y))
-    # node.get_logger().info('vz: ' + str(msg.linear.z))
-    # node.get_logger().info('veh_vel_set.yawspeed: ' + str(msg.angular.z))
 
 
-
-
+    node.veh_vel_set.ned_velocity[2] = 0.0
 
 
 # subscribe convey local waypoint complete flag from path following

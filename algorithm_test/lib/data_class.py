@@ -36,7 +36,7 @@ class CollisionAvoidanceVariable:
         self.lidar_counter = 0
         self.sign = 0.
         self.time = self.clock.now()
-        self.yaw_0 = 135*np.pi/180.
+        self.yaw_0 = 0*np.pi/180.
 
         # Collision Avoidance Velocity Command Offset
         self.vx_offset = -1.130069137
@@ -85,14 +85,14 @@ class Flags:
         self.path_planning             = False
         self.pf_get_local_waypoint  = False
         self.pf_done                = False
+        self.obstacle_flag          = False
+        self.rand_point_flag        = False
 
 class SimulationVariable:
     def __init__(self, sim_name, dir):
         self.sim_name = sim_name
         self.dir = dir
         self.flight_log = None
-
-
 
 # offboard control mode
 class OffboardControlModeState:

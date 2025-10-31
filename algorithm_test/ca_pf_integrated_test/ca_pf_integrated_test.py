@@ -10,7 +10,8 @@ import time
 import rclpy
 from rclpy.node import Node
 from rclpy.clock import Clock
-
+from rclpy.qos import qos_profile_sensor_data
+from std_msgs.msg import Bool
 # Custom libraries
 from ..lib.common_fuctions import set_initial_variables, state_logger, publish_to_plotter, set_wp
 from ..lib.timer import HeartbeatTimer, MainTimer, CommandPubTimer
@@ -27,13 +28,14 @@ from px4_msgs.msg import FusionWeight
 class CAPFIntegrationTest(Node):
     def __init__(self):
         super().__init__("ca_pf_integ_test")
+        self.get_logger().info("CAPFIntegrationTest node initialized")
 
         self.weight = FusionWeight()
         self.current_target = 0.0  # 0 (ca) or 1 (pf)
         self.prev_target = 0.0
         self.transition_start_time = None
-        self.transition_duration_to_pf = 1.1  # seconds
-        self.transition_duration_to_ca = 2.5  # seconds
+        self.transition_duration_to_pf = 2  # seconds
+        self.transition_duration_to_ca = 1  # seconds
         self.initial_setting = False
         # ----------------------------------------------------------------------------------------#
         # region INITIALIZE
@@ -50,15 +52,17 @@ class CAPFIntegrationTest(Node):
         self.pub_px4.declareVehicleCommandPublisher()
         self.pub_px4.declareOffboardControlModePublisher()
         self.pub_px4.declareAttitudeCommandPublisher()                  # Declare PX4 Attitude Command Publisher
-        self.pub_px4.declareFusionWeightPublisher() 
+        # self.pub_px4.declareFusionWeightPublisher() 
         self.pub_px4.declareTrajectorySetpointPublisher()
+        self.weight_publisher = self.create_publisher(FusionWeight, '/fmu/in/fusion_weight', self.qos_profile_px4)
 
         # module data publisher
         self.pub_module = ModulePublisher(self)
         self.pub_module.declareLocalWaypointPublisherToPF()
         self.pub_module.declareModeFlagPublisherToCC()
+        self.pub_module.declareVehicleModePublisher()
 
-        self.sub_flag = self.create_subscription(StateFlag, '/mode_flag2control', self.flag_callback, 1)
+        self.sub_obstacle_flag = self.create_subscription(Bool, '/obstacle_flag', self.obstacle_flag_callback, 1)
         # heartbeat publisher
         self.pub_heartbeat = HeartbeatPublisher(self)
         self.pub_heartbeat.declareControllerHeartbeatPublisher()
@@ -79,7 +83,7 @@ class CAPFIntegrationTest(Node):
         self.pub_func_heartbeat = PubFuncHeartbeat(self)
         self.pub_func_px4       = PubFuncPX4(self)
         self.pub_func_module  = PubFuncModule(self)
-        self.pub_func_plotter   = PubFuncPlotter(self)
+        # self.pub_func_plotter   = PubFuncPlotter(self)
         # endregion
         # ----------------------------------------------------------------------------------------#
         # region SUBSCRIBERS
@@ -94,6 +98,13 @@ class CAPFIntegrationTest(Node):
         self.sub_flag = FlagSubscriber(self)
         self.sub_flag.declareConveyLocalWaypointCompleteSubscriber()
         self.sub_flag.declarePFCompleteSubscriber()
+
+        self.rand_point_sub = self.create_subscription(
+            Bool,
+            "/ca_rand_point_flag",
+            self.rand_point_callback,
+            qos_profile_sensor_data,  # best-effort sensor QoS
+        )
 
         self.sub_etc = EtcSubscriber(self)
         self.sub_etc.declareHeadingWPIdxSubscriber()
@@ -110,13 +121,16 @@ class CAPFIntegrationTest(Node):
 
         self.timer_cmd = CommandPubTimer(self)
         self.timer_cmd.declareAttitudeCommandTimer()
-        self.timer_cmd.declareFusionWeightTimer()
+        # self.timer_cmd.declareFusionWeightTimer()
         self.timer_cmd.declareOffboardVelocityControlTimer()
 
         self.timer_heartbeat = HeartbeatTimer(self)
         self.timer_heartbeat.declareControllerHeartbeatTimer()
         self.timer_heartbeat.declarePathPlanningHeartbeatTimer()
         self.timer_heartbeat.declareCollisionAvoidanceHeartbeatTimer()
+
+
+        self.timer_weight = self.create_timer(0.01, self.weight_callback)
         # endregion
     # --------------------------------------------------------------------------------------------#
     # region MAIN CODE
@@ -150,12 +164,14 @@ class CAPFIntegrationTest(Node):
         if self.flags.path_planning == True:
             self.pub_func_module.local_waypoint_publish(True)
             self.pub_func_px4.publish_vehicle_command(self.modes.prm_position_mode)
-        
+            
+            # for debugging
+            # self.get_logger().info(f"pf_get_local_waypoint: {self.flags.pf_get_local_waypoint}")
+
         if self.flags.pf_get_local_waypoint == True and self.mode_status.OFFBOARD == False:
             self.flags.path_planning = False
             self.mode_status.OFFBOARD = True
             self.mode_status.PATH_FOLLOWING = True
-            self.get_logger().info('Vehicle is reached to initial position')
             self.get_logger().info('Mode Status : OFFBOARD/Path Following')
 
         # check if path following is recieved the local waypoint
@@ -167,7 +183,6 @@ class CAPFIntegrationTest(Node):
                 self.current_target = 1.0  # 0 (ca) or 1 (pf)
                 self.prev_target = 1.0
                 self.weight.fusion_weight = float(1.0)
-
             self.pub_func_module.publish_flags()
 
             if self.mode_status.PATH_FOLLOWING == True:
@@ -195,67 +210,173 @@ class CAPFIntegrationTest(Node):
             self.pub_func_px4.publish_vehicle_command(self.modes.prm_disarm_mode)    
             self.mode_status.is_disarmed = True
             self.get_logger().info('Vehicle is disarmed')  
-        # self.get_logger().info(str(self.ca_var.depth_min_distance))
+
         # state_logger(self)
     # endregion
 
-    def flag_callback(self, msg):
+    def obstacle_flag_callback(self, msg):
         # self.get_logger().info(f"Flag received: PATH_FOLLOWING: {msg.PATH_FOLLOWING}, COLLISION_AVOIDANCE: {msg.COLLISION_AVOIDANCE}") 씨발 누가 쏘는거야
-        
+        self.flags.obstacle_flag = msg.data
         
         # update mode status
-        self.mode_status.COLLISION_AVOIDANCE = msg.collision_avoidance
-        self.mode_status.PATH_FOLLOWING = msg.path_following
+        if self.mode_status.OFFBOARD == True:
+            
+            if self.flags.obstacle_flag == False and self.mode_status.PATH_FOLLOWING == False:
+                # self.weight.fusion_weight = float(1.0)
+                self.mode_status.PATH_FOLLOWING = True
+                self.mode_status.COLLISION_AVOIDANCE = False
+                self.get_logger().info("Mode Status : PATH_FOLLOWING")
+                self.pub_func_module.publish_vehicle_mode()
+            elif self.flags.obstacle_flag == True and self.mode_status.COLLISION_AVOIDANCE == False:
+                # self.weight.fusion_weight = float(0.0)
+                self.mode_status.PATH_FOLLOWING = False
+                self.mode_status.COLLISION_AVOIDANCE = True
+                self.get_logger().info("Mode Status : COLLISION_AVOIDANCE")
+                self.pub_func_module.publish_vehicle_mode()
+
         
-        
-        
-        if self.mode_status.PATH_FOLLOWING == True:
-            self.get_logger().info("PATH_FOLLOWING is True")
-            z = self.guid_var.waypoint_z[self.guid_var.cur_wp]
-            self.guid_var.waypoint_x = self.guid_var.waypoint_x[self.guid_var.cur_wp:]
-            self.guid_var.waypoint_y = self.guid_var.waypoint_y[self.guid_var.cur_wp:]
-            self.guid_var.waypoint_z = self.guid_var.waypoint_z[self.guid_var.cur_wp:]
 
-            # self.guid_var.waypoint_x = list(np.insert(self.guid_var.waypoint_x, 0, msg.x))
-            # self.guid_var.waypoint_y = list(np.insert(self.guid_var.waypoint_y, 0, msg.y))
-            # self.guid_var.waypoint_z = list(np.insert(self.guid_var.waypoint_z, 0, z))
 
-            self.guid_var.waypoint_x = list(np.insert(self.guid_var.waypoint_x, 0, self.state_var.x))
-            self.guid_var.waypoint_x = list(np.insert(self.guid_var.waypoint_x, 0, self.state_var.x))
-            self.guid_var.waypoint_y = list(np.insert(self.guid_var.waypoint_y, 0, self.state_var.y))
-            self.guid_var.waypoint_y = list(np.insert(self.guid_var.waypoint_y, 0, self.state_var.y))
-            self.guid_var.waypoint_z = list(np.insert(self.guid_var.waypoint_z, 0, self.state_var.z))
-            self.guid_var.waypoint_z = list(np.insert(self.guid_var.waypoint_z, 0, self.state_var.z))
 
-            self.guid_var.real_wp_x = self.guid_var.waypoint_x
-            self.guid_var.real_wp_y = self.guid_var.waypoint_y
-            self.guid_var.real_wp_z = self.guid_var.waypoint_z
 
-            self.pub_func_module.local_waypoint_publish(False)
+
+            # if self.mode_status.PATH_FOLLOWING == True:
+            #     z = self.guid_var.waypoint_z[self.guid_var.cur_wp]
+            #     self.guid_var.waypoint_x = self.guid_var.waypoint_x[self.guid_var.cur_wp:]
+            #     self.guid_var.waypoint_y = self.guid_var.waypoint_y[self.guid_var.cur_wp:]
+            #     self.guid_var.waypoint_z = self.guid_var.waypoint_z[self.guid_var.cur_wp:]
+
+            #     # self.guid_var.waypoint_x = list(np.insert(self.guid_var.waypoint_x, 0, msg.x))
+            #     # self.guid_var.waypoint_y = list(np.insert(self.guid_var.waypoint_y, 0, msg.y))
+            #     # self.guid_var.waypoint_z = list(np.insert(self.guid_var.waypoint_z, 0, z))
+
+            #     self.guid_var.waypoint_x = list(np.insert(self.guid_var.waypoint_x, 0, self.state_var.x))
+            #     self.guid_var.waypoint_x = list(np.insert(self.guid_var.waypoint_x, 0, self.state_var.x))
+            #     self.guid_var.waypoint_y = list(np.insert(self.guid_var.waypoint_y, 0, self.state_var.y))
+            #     self.guid_var.waypoint_y = list(np.insert(self.guid_var.waypoint_y, 0, self.state_var.y))
+            #     self.guid_var.waypoint_z = list(np.insert(self.guid_var.waypoint_z, 0, self.state_var.z))
+            #     self.guid_var.waypoint_z = list(np.insert(self.guid_var.waypoint_z, 0, self.state_var.z))
+
+            #     self.guid_var.real_wp_x = self.guid_var.waypoint_x
+            #     self.guid_var.real_wp_y = self.guid_var.waypoint_y
+            #     self.guid_var.real_wp_z = self.guid_var.waypoint_z
+
+            #     self.pub_func_module.local_waypoint_publish(False)
+
+    def rand_point_callback(self, msg: Bool):
+        self.flags.rand_point_flag = msg.data
+        # for debugging
+        # self.get_logger().info(f"Rand point callback: {msg.data}")
+
+        # if self.mode_status.OFFBOARD == True:
+        #     if msg.data == True and self.flags.obstacle_flag == False and self.mode_status.PATH_FOLLOWING == False:
+        #         self.weight.fusion_weight = float(1.0)
+        #         self.mode_status.PATH_FOLLOWING = True
+        #         self.mode_status.COLLISION_AVOIDANCE = False
+        #         self.get_logger().info("Mode Status : PATH_FOLLOWING")
+        #         self.pub_func_module.publish_vehicle_mode()
+
+        #         # z = self.guid_var.waypoint_z[self.guid_var.cur_wp]
+        #         # self.guid_var.waypoint_x = self.guid_var.waypoint_x[self.guid_var.cur_wp:]
+        #         # self.guid_var.waypoint_y = self.guid_var.waypoint_y[self.guid_var.cur_wp:]
+        #         # self.guid_var.waypoint_z = self.guid_var.waypoint_z[self.guid_var.cur_wp:]
+
+        #         # # self.guid_var.waypoint_x = list(np.insert(self.guid_var.waypoint_x, 0, msg.x))
+        #         # # self.guid_var.waypoint_y = list(np.insert(self.guid_var.waypoint_y, 0, msg.y))
+        #         # # self.guid_var.waypoint_z = list(np.insert(self.guid_var.waypoint_z, 0, z))
+
+        #         # self.guid_var.waypoint_x = list(np.insert(self.guid_var.waypoint_x, 0, self.state_var.x))
+        #         # self.guid_var.waypoint_x = list(np.insert(self.guid_var.waypoint_x, 0, self.state_var.x))
+        #         # self.guid_var.waypoint_y = list(np.insert(self.guid_var.waypoint_y, 0, self.state_var.y))
+        #         # self.guid_var.waypoint_y = list(np.insert(self.guid_var.waypoint_y, 0, self.state_var.y))
+        #         # self.guid_var.waypoint_z = list(np.insert(self.guid_var.waypoint_z, 0, self.state_var.z))
+        #         # self.guid_var.waypoint_z = list(np.insert(self.guid_var.waypoint_z, 0, self.state_var.z))
+
+        #         # self.guid_var.real_wp_x = self.guid_var.waypoint_x
+        #         # self.guid_var.real_wp_y = self.guid_var.waypoint_y
+        #         # self.guid_var.real_wp_z = self.guid_var.waypoint_z
+
+        #         # self.pub_func_module.local_waypoint_publish(False)
+
+
+        #     if msg.data == False and self.flags.obstacle_flag == True and self.mode_status.PATH_FOLLOWING == True:
+        #         self.weight.fusion_weight = float(0.0)
+        #         self.mode_status.PATH_FOLLOWING = False
+        #         self.mode_status.COLLISION_AVOIDANCE = True
+        #         self.get_logger().info("Mode Status : COLLISION_AVOIDANCE")
+        #         self.pub_func_module.publish_vehicle_mode()
+
 
     def weight_callback(self):
         self.weight.timestamp = int(Clock().now().nanoseconds / 1000)  # time in microseconds
-        if self.mode_status.OFFBOARD == False:
+        if not self.mode_status.OFFBOARD:
             self.weight.fusion_weight = float(0.0)
-        else:
-            self.weight.fusion_weight = float(self.current_target)
-            if self.current_target != self.prev_target:
-                self.transition_start_time = time.time()
-                self.prev_target = self.current_target
+            self.weight_publisher.publish(self.weight)
+            return
+        
+
+        target_weight = 1.0 if self.mode_status.PATH_FOLLOWING else 0.0
+
+        if target_weight != self.prev_target:
+            self.transition_start_time = time.time()
+            self.transition_direction = target_weight  # 0→1 or 1→0
+            self.prev_target = target_weight
+
+        if self.transition_start_time is None:
+            self.weight.fusion_weight = float(target_weight)
+            self.weight_publisher.publish(self.weight)
+            return
+
+        elapsed = time.time() - self.transition_start_time
 
 
-            # # 선형 기반 alpha 업데이트
+        if self.transition_direction == 1.0:  # CA → PF (0 → 1)
+            duration = self.transition_duration_to_pf
+            if elapsed < duration:
+                alpha = elapsed / duration
+                self.weight.fusion_weight = float(alpha)  # 0에서 1로
+            else:
+                self.weight.fusion_weight = 1.0
+                self.transition_start_time = None
+
+        else:  # PF → CA (1 → 0)
+            duration = self.transition_duration_to_ca
+            if elapsed < duration:
+                alpha = elapsed / duration
+                self.weight.fusion_weight = float(1.0 - alpha)  # 1에서 0으로
+            else:
+                self.weight.fusion_weight = 0.0
+                self.transition_start_time = None
+
+
+        #     if self.mode_status.PATH_FOLLOWING == True:
+        #         self.weight.fusion_weight = float(1.0)
+        #         self.current_target = 1.0
+        #     if self.mode_status.COLLISION_AVOIDANCE == True:
+        #         self.weight.fusion_weight = float(0.0)
+
+ 
+
+            # if self.mode_status.PATH_FOLLOWING == True:
+            #     self.current_target = 1.0
+            # if self.mode_status.COLLISION_AVOIDANCE == True:
+            #     self.current_target = 0.0
+            # # self.weight.fusion_weight = float(self.current_target)
+            # if self.current_target != self.prev_target:
+            #     self.transition_start_time = time.time()
+            #     self.prev_target = self.current_target
+
+
+            # 시그모이드 기반 alpha 업데이트
             # if self.transition_start_time is not None:
             #     elapsed = time.time() - self.transition_start_time
             #     if elapsed < self.transition_duration_to_pf and self.current_target == 1.0:
-            #         alpha = elapsed / self.transition_duration_to_pf
-            #         alpha = min(max(alpha, 0.0), 1.0)  # clamp to [0, 1]
+            #         alpha = self.sigmoid(elapsed)
             #         if self.current_target == 0.0:  # pf → ca (1 → 0)
             #             alpha = 1.0 - alpha
             #         self.weight.fusion_weight = float(alpha)
             #     elif elapsed < self.transition_duration_to_ca and self.current_target == 0.0:
-            #         alpha = elapsed / self.transition_duration_to_ca
-            #         alpha = min(max(alpha, 0.0), 1.0)  # clamp to [0, 1]
+            #         alpha = self.sigmoid(elapsed)
             #         self.weight.fusion_weight = float(alpha)
             #     else:
             #         self.weight.fusion_weight = float(self.current_target)
@@ -263,26 +384,6 @@ class CAPFIntegrationTest(Node):
             # else:
             #     self.weight.fusion_weight = float(self.current_target)
 
-            # 시그모이드 기반 alpha 업데이트
-            if self.transition_start_time is not None:
-                elapsed = time.time() - self.transition_start_time
-                if elapsed < self.transition_duration_to_pf and self.current_target == 1.0:
-                    alpha = self.sigmoid(elapsed)
-                    if self.current_target == 0.0:  # pf → ca (1 → 0)
-                        alpha = 1.0 - alpha
-                    self.weight.fusion_weight = float(alpha)
-                elif elapsed < self.transition_duration_to_ca and self.current_target == 0.0:
-                    alpha = self.sigmoid(elapsed)
-                    self.weight.fusion_weight = float(alpha)
-                else:
-                    self.weight.fusion_weight = float(self.current_target)
-                    self.transition_start_time = None
-            else:
-                self.weight.fusion_weight = float(self.current_target)
-
-
-
-        # self.get_logger().info(f"weight: {self.weight.fusion_weight}")
         self.weight_publisher.publish(self.weight)
         self.pub_func_px4.publish_att_command(self.veh_att_set)
 
@@ -294,6 +395,7 @@ class CAPFIntegrationTest(Node):
             alpha = 0.0
 
         return alpha
+
 def main(args=None):
     rclpy.init(args=args)
     ca_pf_integration_test = CAPFIntegrationTest()

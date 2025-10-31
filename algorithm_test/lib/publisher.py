@@ -84,6 +84,14 @@ class ModulePublisher:
             '/mode_flag_to_CC',
             1
         )
+    
+    # declare vehicle mode publisher
+    def declareVehicleModePublisher(self):
+        self.node.vehicle_mode_publisher = self.node.create_publisher(
+            Bool,
+            "/vehicle_mode",
+            1
+        )
 
 # heartbeat publisher
 class HeartbeatPublisher:
@@ -292,6 +300,10 @@ class PubFuncModule:
         msg.waypoint_x = self.guid_var.waypoint_x
         msg.waypoint_y = self.guid_var.waypoint_y
         msg.waypoint_z = self.guid_var.waypoint_z
+        
+        # for debugging
+        #self.node.get_logger().info(f"local_waypoint_publish: {msg.waypoint_x}, {msg.waypoint_y}, {msg.waypoint_z}")
+
         self.node.local_waypoint_publisher_to_pf.publish(msg)
 
     # publish global waypoint
@@ -309,7 +321,20 @@ class PubFuncModule:
         msg.collision_avoidance = self.mode_status.COLLISION_AVOIDANCE
         msg.offboard = self.mode_status.OFFBOARD
         msg.landing = self.mode_status.LANDING
+        
+        # for debugging
+        # self.node.get_logger().info(f"publish_flags: {msg.path_following}, {msg.collision_avoidance}, {msg.offboard}, {msg.landing}")
+        
         self.node.mode_status_publisher_to_cc.publish(msg)
+
+    # publish vehicle mode
+    def publish_vehicle_mode(self):
+        msg = Bool()
+        if self.node.mode_status.COLLISION_AVOIDANCE == True:
+            msg.data = True
+        if self.node.mode_status.PATH_FOLLOWING == True:
+            msg.data = False
+        self.node.vehicle_mode_publisher.publish(msg)
 
 # heartbeat publish functions
 class PubFuncHeartbeat:

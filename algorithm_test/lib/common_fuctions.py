@@ -64,7 +64,7 @@ def set_initial_variables(classIn, dir, sim_name):
 
     classIn.qos_profile_lidar = QoSProfile(
         reliability=ReliabilityPolicy.BEST_EFFORT,
-        depth=10
+        depth=1
     )
 
     classIn.weight = FusionWeight()
@@ -85,6 +85,7 @@ def set_wp(self):
     self.guid_var.real_wp_x = list(data["x"])
     self.guid_var.real_wp_y = list(data["y"])
     self.guid_var.real_wp_z = list(data["z"])
+    self.get_logger().info(f"Waypoint set: {self.guid_var.waypoint_x}, {self.guid_var.waypoint_y}, {self.guid_var.waypoint_z}")
 
 def set_logging_file(self):
     # file name like 20241216_225040_path_following.csv

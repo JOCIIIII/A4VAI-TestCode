@@ -46,12 +46,12 @@ class CollisionAvoidanceTest(Node):
         self.pub_heartbeat.declarePathFollowingHeartbeatPublisher()
         self.pub_heartbeat.declarePathPlanningHeartbeatPublisher()
 
-        self.pub_plotter = PlotterPublisher(self)
-        self.pub_plotter.declareGlobalWaypointPublisherToPlotter()
-        self.pub_plotter.declareLocalWaypointPublisherToPlotter()
-        self.pub_plotter.declareHeadingPublisherToPlotter()
-        self.pub_plotter.declareStatePublisherToPlotter()
-        self.pub_plotter.declareMinDistancePublisherToPlotter()
+        # self.pub_plotter = PlotterPublisher(self)
+        # self.pub_plotter.declareGlobalWaypointPublisherToPlotter()
+        # self.pub_plotter.declareLocalWaypointPublisherToPlotter()
+        # self.pub_plotter.declareHeadingPublisherToPlotter()
+        # self.pub_plotter.declareStatePublisherToPlotter()
+        # self.pub_plotter.declareMinDistancePublisherToPlotter()
         # end region
         # ----------------------------------------------------------------------------------------#
         # region PUB FUNC
