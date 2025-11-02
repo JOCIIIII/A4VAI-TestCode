@@ -1,6 +1,7 @@
 # common libraries
 import numpy as np
 import math
+import time
 import rclpy
 from rclpy.clock import Clock
 # custom libraries
@@ -166,21 +167,49 @@ def PF_Att2Control_callback(node, msg):
 # update velocity offboard command from collision avoidance
 def CA2Control_callback(node, msg):
 
-    fuck_vy_gain = 3.0
-    fuck_yaw_gain = 2.0
+    vy_gain = 7.0
+    yaw_gain = 1.0
 
+    # Velocity ramping: CA 진입 초기에는 현재 vx 유지, 점진적으로 ca_initial_vx로 변경
+    vx_command = node.veh_vel_set.ca_initial_vx
+
+    if node.veh_vel_set.ca_start_time is not None:
+        elapsed = time.time() - node.veh_vel_set.ca_start_time
+
+        # 초기 딜레이 적용 (fusion weight 딜레이와 동기화)
+        if elapsed < node.veh_vel_set.ca_ramp_delay:
+            # 딜레이 기간: 현재 vx 유지 (피치 급격한 변화 방지)
+            vx_command = node.state_var.vx_b
+        else:
+            adjusted_elapsed = elapsed - node.veh_vel_set.ca_ramp_delay
+
+            if adjusted_elapsed < node.veh_vel_set.ca_ramp_duration:
+                # Ramping 중: smootherstep으로 현재 vx → ca_initial_vx
+                t = adjusted_elapsed / node.veh_vel_set.ca_ramp_duration
+                # Smootherstep (5차 S-curve - 피치 변화 최소화)
+                alpha = t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+
+                # 현재 실제 vx와 목표 vx 사이 보간
+                current_vx = node.state_var.vx_b
+                vx_command = current_vx * (1.0 - alpha) + node.veh_vel_set.ca_initial_vx * alpha
+            # else: ramping 완료, ca_initial_vx 사용
+
+    # 충돌회피 중에는 ramped vx를 사용 (회피 완료 시에는 PF로 자연스럽게 전환)
+    # rand_point_flag는 회피 완료 후 경로 복귀 상태를 의미
     if node.flags.rand_point_flag == True:
-        node.veh_vel_set.body_velocity = np.array([3.0, 0.0, 0.0])
+        # 회피 완료 후 경로 복귀: vx 유지하면서 측면 속도와 yaw는 0
+        node.veh_vel_set.body_velocity = np.array([vx_command, 0.0, 0.0])
         node.veh_vel_set.yawspeed = 0.0
     else:
-        node.veh_vel_set.body_velocity = np.array([node.state_var.vx_b, (-msg.linear.y-0.2)*fuck_vy_gain, 0])
-        node.veh_vel_set.yawspeed = -msg.angular.z*fuck_yaw_gain
+        # 충돌회피 진행 중: ramped vx 사용, vy와 yaw만 CA 명령 사용
+        node.veh_vel_set.body_velocity = np.array([vx_command, (-msg.linear.y-0.2)*vy_gain, 0])
+
+        node.veh_vel_set.yawspeed = -msg.angular.z*yaw_gain
 
     node.veh_vel_set.ned_velocity = BodytoNED(node.veh_vel_set.body_velocity, node.state_var.dcm_b2n)
 
-
+    # 고도는 유지
     node.veh_vel_set.ned_velocity[2] = 0.0
-
 
 # subscribe convey local waypoint complete flag from path following
 def vehicle_local_position_callback(node, msg):

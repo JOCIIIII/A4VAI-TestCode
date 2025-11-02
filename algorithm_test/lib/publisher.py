@@ -238,6 +238,7 @@ class PubFuncPX4:
             msg.velocity        = np.float32([veh_vel_set.ned_velocity[0], veh_vel_set.ned_velocity[1], veh_vel_set.ned_velocity[2]])
             msg.yaw             = veh_vel_set.yaw
             msg.yawspeed        = veh_vel_set.yawspeed
+
             self.node.trajectory_setpoint_publisher.publish(msg)
 
     # publish attitude command
@@ -300,9 +301,6 @@ class PubFuncModule:
         msg.waypoint_x = self.guid_var.waypoint_x
         msg.waypoint_y = self.guid_var.waypoint_y
         msg.waypoint_z = self.guid_var.waypoint_z
-        
-        # for debugging
-        #self.node.get_logger().info(f"local_waypoint_publish: {msg.waypoint_x}, {msg.waypoint_y}, {msg.waypoint_z}")
 
         self.node.local_waypoint_publisher_to_pf.publish(msg)
 
@@ -402,9 +400,15 @@ class PubFuncPlotter:
     def publish_local_waypoint_to_plotter(self, guid_var):
         msg = LocalWaypointSetpoint()
         msg.path_planning_complete = True
-        msg.waypoint_x = guid_var.real_wp_x
-        msg.waypoint_y = guid_var.real_wp_y
-        msg.waypoint_z = guid_var.real_wp_z
+        # Publish only remaining waypoints from cur_wp onwards
+        if guid_var.cur_wp < len(guid_var.waypoint_x):
+            msg.waypoint_x = guid_var.waypoint_x[guid_var.cur_wp:]
+            msg.waypoint_y = guid_var.waypoint_y[guid_var.cur_wp:]
+            msg.waypoint_z = guid_var.waypoint_z[guid_var.cur_wp:]
+        else:
+            msg.waypoint_x = []
+            msg.waypoint_y = []
+            msg.waypoint_z = []
         self.node.local_waypoint_publisher_to_plotter.publish(msg)
 # endregion
 #-------------------------------------------------------------------------------------------#

@@ -34,9 +34,14 @@ class CAPFIntegrationTest(Node):
         self.current_target = 0.0  # 0 (ca) or 1 (pf)
         self.prev_target = 0.0
         self.transition_start_time = None
-        self.transition_duration_to_pf = 2  # seconds
-        self.transition_duration_to_ca = 1  # seconds
+        self.transition_initial_weight = 0.0  # 전환 시작 시 weight 값
+        self.transition_duration_to_pf = 5.0  # seconds (CA → PF: 천천히 전환하여 피치 급변 방지)
+        self.transition_duration_to_ca = 1.5  # seconds (PF → CA: 중앙 장애물 긴급 회피)
+        self.ca_entry_delay = 0.0  # seconds (CA 진입 즉시 - 중앙 장애물 대응)
         self.initial_setting = False
+
+        # CA exit transition management
+        self.ca_exit_transition_active = False  # CA 종료 후 전환 중 플래그
         # ----------------------------------------------------------------------------------------#
         # region INITIALIZE
         dir = os.path.dirname(os.path.abspath(__file__))
@@ -69,21 +74,20 @@ class CAPFIntegrationTest(Node):
         self.pub_heartbeat.declarePathPlanningHeartbeatPublisher()
         self.pub_heartbeat.declareCollisionAvoidanceHeartbeatPublisher()
 
-        # Todo: plotter will be replaced with fox glove
-        # # plotter publisher
-        # self.pub_plotter = PlotterPublisher(self)
-        # self.pub_plotter.declareGlobalWaypointPublisherToPlotter()
-        # self.pub_plotter.declareLocalWaypointPublisherToPlotter()
-        # self.pub_plotter.declareHeadingPublisherToPlotter()
-        # self.pub_plotter.declareStatePublisherToPlotter()
-        # self.pub_plotter.declareMinDistancePublisherToPlotter()
+        # plotter publisher (for foxglove visualization)
+        self.pub_plotter = PlotterPublisher(self)
+        self.pub_plotter.declareGlobalWaypointPublisherToPlotter()
+        self.pub_plotter.declareLocalWaypointPublisherToPlotter()
+        self.pub_plotter.declareHeadingPublisherToPlotter()
+        self.pub_plotter.declareStatePublisherToPlotter()
+        self.pub_plotter.declareMinDistancePublisherToPlotter()
         # endregion
         # ----------------------------------------------------------------------------------------#
         # region PUB FUNC
         self.pub_func_heartbeat = PubFuncHeartbeat(self)
         self.pub_func_px4       = PubFuncPX4(self)
         self.pub_func_module  = PubFuncModule(self)
-        # self.pub_func_plotter   = PubFuncPlotter(self)
+        self.pub_func_plotter   = PubFuncPlotter(self)
         # endregion
         # ----------------------------------------------------------------------------------------#
         # region SUBSCRIBERS
@@ -185,6 +189,9 @@ class CAPFIntegrationTest(Node):
                 self.weight.fusion_weight = float(1.0)
             self.pub_func_module.publish_flags()
 
+            # Publish waypoint data to foxglove for visualization
+            publish_to_plotter(self)
+
             if self.mode_status.PATH_FOLLOWING == True:
                 self.current_target = 1.0
             
@@ -217,21 +224,45 @@ class CAPFIntegrationTest(Node):
     def obstacle_flag_callback(self, msg):
         # self.get_logger().info(f"Flag received: PATH_FOLLOWING: {msg.PATH_FOLLOWING}, COLLISION_AVOIDANCE: {msg.COLLISION_AVOIDANCE}") 씨발 누가 쏘는거야
         self.flags.obstacle_flag = msg.data
-        
+
         # update mode status
         if self.mode_status.OFFBOARD == True:
-            
-            if self.flags.obstacle_flag == False and self.mode_status.PATH_FOLLOWING == False:
-                # self.weight.fusion_weight = float(1.0)
-                self.mode_status.PATH_FOLLOWING = True
-                self.mode_status.COLLISION_AVOIDANCE = False
-                self.get_logger().info("Mode Status : PATH_FOLLOWING")
-                self.pub_func_module.publish_vehicle_mode()
-            elif self.flags.obstacle_flag == True and self.mode_status.COLLISION_AVOIDANCE == False:
-                # self.weight.fusion_weight = float(0.0)
+
+            if self.flags.obstacle_flag == False and self.mode_status.COLLISION_AVOIDANCE == True:
+                # CA 종료 시 즉시 PF로 전환하지 않고, 전환 준비만 함
+                if not self.ca_exit_transition_active:
+                    self.ca_exit_transition_active = True
+                    self.get_logger().info("🔄 CA→PF Transition: Resuming path following")
+
+                # PathFollowing will handle trajectory and yaw control
+                # No need for manual yaw transition - let PathFollowing do it naturally
+            elif self.flags.obstacle_flag == True and (self.mode_status.PATH_FOLLOWING == True or self.ca_exit_transition_active):
+                # 충돌회피 진입 (PF → CA 또는 CA exit transition 취소)
+
+                # CA exit transition이 진행 중이었다면 취소
+                if self.ca_exit_transition_active:
+                    self.get_logger().info("⚠️ CA exit transition cancelled - obstacle detected again")
+                    self.ca_exit_transition_active = False
+                    # weight_callback이 자동으로 현재 weight에서 0.0으로 부드럽게 전환
+                else:
+                    self.get_logger().info("🚨 Mode Status: COLLISION_AVOIDANCE")
+
+                # 충돌회피 진입 시 현재 전진 속도(vx_b) 저장
+                captured_vx = self.state_var.vx_b
+                self.veh_vel_set.ca_initial_vx = captured_vx
+
+                # CA 진입 시간 기록 (velocity ramping 용)
+                self.veh_vel_set.ca_start_time = time.time()
+
+                # 초기 body velocity 설정 (CA callback이 호출되기 전까지 사용)
+                from ..lib.common_fuctions import BodytoNED
+                self.veh_vel_set.body_velocity = np.array([captured_vx, 0.0, 0.0])
+                self.veh_vel_set.ned_velocity = BodytoNED(self.veh_vel_set.body_velocity, self.state_var.dcm_b2n)
+                self.veh_vel_set.ned_velocity[2] = 0.0  # 고도 유지
+
+                # 모드 전환
                 self.mode_status.PATH_FOLLOWING = False
                 self.mode_status.COLLISION_AVOIDANCE = True
-                self.get_logger().info("Mode Status : COLLISION_AVOIDANCE")
                 self.pub_func_module.publish_vehicle_mode()
 
         
@@ -265,47 +296,6 @@ class CAPFIntegrationTest(Node):
 
     def rand_point_callback(self, msg: Bool):
         self.flags.rand_point_flag = msg.data
-        # for debugging
-        # self.get_logger().info(f"Rand point callback: {msg.data}")
-
-        # if self.mode_status.OFFBOARD == True:
-        #     if msg.data == True and self.flags.obstacle_flag == False and self.mode_status.PATH_FOLLOWING == False:
-        #         self.weight.fusion_weight = float(1.0)
-        #         self.mode_status.PATH_FOLLOWING = True
-        #         self.mode_status.COLLISION_AVOIDANCE = False
-        #         self.get_logger().info("Mode Status : PATH_FOLLOWING")
-        #         self.pub_func_module.publish_vehicle_mode()
-
-        #         # z = self.guid_var.waypoint_z[self.guid_var.cur_wp]
-        #         # self.guid_var.waypoint_x = self.guid_var.waypoint_x[self.guid_var.cur_wp:]
-        #         # self.guid_var.waypoint_y = self.guid_var.waypoint_y[self.guid_var.cur_wp:]
-        #         # self.guid_var.waypoint_z = self.guid_var.waypoint_z[self.guid_var.cur_wp:]
-
-        #         # # self.guid_var.waypoint_x = list(np.insert(self.guid_var.waypoint_x, 0, msg.x))
-        #         # # self.guid_var.waypoint_y = list(np.insert(self.guid_var.waypoint_y, 0, msg.y))
-        #         # # self.guid_var.waypoint_z = list(np.insert(self.guid_var.waypoint_z, 0, z))
-
-        #         # self.guid_var.waypoint_x = list(np.insert(self.guid_var.waypoint_x, 0, self.state_var.x))
-        #         # self.guid_var.waypoint_x = list(np.insert(self.guid_var.waypoint_x, 0, self.state_var.x))
-        #         # self.guid_var.waypoint_y = list(np.insert(self.guid_var.waypoint_y, 0, self.state_var.y))
-        #         # self.guid_var.waypoint_y = list(np.insert(self.guid_var.waypoint_y, 0, self.state_var.y))
-        #         # self.guid_var.waypoint_z = list(np.insert(self.guid_var.waypoint_z, 0, self.state_var.z))
-        #         # self.guid_var.waypoint_z = list(np.insert(self.guid_var.waypoint_z, 0, self.state_var.z))
-
-        #         # self.guid_var.real_wp_x = self.guid_var.waypoint_x
-        #         # self.guid_var.real_wp_y = self.guid_var.waypoint_y
-        #         # self.guid_var.real_wp_z = self.guid_var.waypoint_z
-
-        #         # self.pub_func_module.local_waypoint_publish(False)
-
-
-        #     if msg.data == False and self.flags.obstacle_flag == True and self.mode_status.PATH_FOLLOWING == True:
-        #         self.weight.fusion_weight = float(0.0)
-        #         self.mode_status.PATH_FOLLOWING = False
-        #         self.mode_status.COLLISION_AVOIDANCE = True
-        #         self.get_logger().info("Mode Status : COLLISION_AVOIDANCE")
-        #         self.pub_func_module.publish_vehicle_mode()
-
 
     def weight_callback(self):
         self.weight.timestamp = int(Clock().now().nanoseconds / 1000)  # time in microseconds
@@ -313,15 +303,22 @@ class CAPFIntegrationTest(Node):
             self.weight.fusion_weight = float(0.0)
             self.weight_publisher.publish(self.weight)
             return
-        
 
-        target_weight = 1.0 if self.mode_status.PATH_FOLLOWING else 0.0
+        # CA exit transition: Start weight transition even before mode switches to PF
+        if self.ca_exit_transition_active:
+            target_weight = 1.0
+        else:
+            target_weight = 1.0 if self.mode_status.PATH_FOLLOWING else 0.0
 
+        # 전환 시작 감지: target_weight가 변경되면 새로운 전환 시작
         if target_weight != self.prev_target:
             self.transition_start_time = time.time()
-            self.transition_direction = target_weight  # 0→1 or 1→0
+            # 현재 weight 값을 전환 시작점으로 저장
+            self.transition_initial_weight = self.weight.fusion_weight
+            self.transition_direction = target_weight  # 목표 weight (0.0 or 1.0)
             self.prev_target = target_weight
 
+        # 전환 중이 아니면 target_weight 그대로 사용
         if self.transition_start_time is None:
             self.weight.fusion_weight = float(target_weight)
             self.weight_publisher.publish(self.weight)
@@ -329,72 +326,70 @@ class CAPFIntegrationTest(Node):
 
         elapsed = time.time() - self.transition_start_time
 
-
-        if self.transition_direction == 1.0:  # CA → PF (0 → 1)
+        # 전환 duration 선택
+        if self.transition_direction == 1.0:  # → PF (목표: 1.0)
             duration = self.transition_duration_to_pf
-            if elapsed < duration:
-                alpha = elapsed / duration
-                self.weight.fusion_weight = float(alpha)  # 0에서 1로
-            else:
-                self.weight.fusion_weight = 1.0
-                self.transition_start_time = None
-
-        else:  # PF → CA (1 → 0)
+        else:  # → CA (목표: 0.0)
+            # CA 진입 초기 딜레이 적용
+            if elapsed < self.ca_entry_delay:
+                self.weight.fusion_weight = self.transition_initial_weight
+                self.weight_publisher.publish(self.weight)
+                return
+            elapsed = elapsed - self.ca_entry_delay
             duration = self.transition_duration_to_ca
-            if elapsed < duration:
-                alpha = elapsed / duration
-                self.weight.fusion_weight = float(1.0 - alpha)  # 1에서 0으로
-            else:
-                self.weight.fusion_weight = 0.0
-                self.transition_start_time = None
 
+        # Smootherstep 보간: initial_weight → target_weight
+        if elapsed < duration:
+            t = elapsed / duration
+            alpha = self.smootherstep(t)
+            # 현재 weight = 시작 weight + (목표 weight - 시작 weight) * alpha
+            current_weight = self.transition_initial_weight + (self.transition_direction - self.transition_initial_weight) * alpha
+            self.weight.fusion_weight = float(current_weight)
 
-        #     if self.mode_status.PATH_FOLLOWING == True:
-        #         self.weight.fusion_weight = float(1.0)
-        #         self.current_target = 1.0
-        #     if self.mode_status.COLLISION_AVOIDANCE == True:
-        #         self.weight.fusion_weight = float(0.0)
+            # CA exit transition: Switch to PF mode when fusion_weight reaches 0.5
+            if self.ca_exit_transition_active and current_weight >= 0.5 and self.mode_status.COLLISION_AVOIDANCE:
+                self.mode_status.PATH_FOLLOWING = True
+                self.mode_status.COLLISION_AVOIDANCE = False
+                self.ca_exit_transition_active = False
+                self.pub_func_module.publish_vehicle_mode()
 
- 
-
-            # if self.mode_status.PATH_FOLLOWING == True:
-            #     self.current_target = 1.0
-            # if self.mode_status.COLLISION_AVOIDANCE == True:
-            #     self.current_target = 0.0
-            # # self.weight.fusion_weight = float(self.current_target)
-            # if self.current_target != self.prev_target:
-            #     self.transition_start_time = time.time()
-            #     self.prev_target = self.current_target
-
-
-            # 시그모이드 기반 alpha 업데이트
-            # if self.transition_start_time is not None:
-            #     elapsed = time.time() - self.transition_start_time
-            #     if elapsed < self.transition_duration_to_pf and self.current_target == 1.0:
-            #         alpha = self.sigmoid(elapsed)
-            #         if self.current_target == 0.0:  # pf → ca (1 → 0)
-            #             alpha = 1.0 - alpha
-            #         self.weight.fusion_weight = float(alpha)
-            #     elif elapsed < self.transition_duration_to_ca and self.current_target == 0.0:
-            #         alpha = self.sigmoid(elapsed)
-            #         self.weight.fusion_weight = float(alpha)
-            #     else:
-            #         self.weight.fusion_weight = float(self.current_target)
-            #         self.transition_start_time = None
-            # else:
-            #     self.weight.fusion_weight = float(self.current_target)
+        else:
+            # 전환 완료: 목표 weight 도달
+            self.weight.fusion_weight = float(self.transition_direction)
+            self.transition_start_time = None
+            self.ca_exit_transition_active = False  # Reset transition flag
 
         self.weight_publisher.publish(self.weight)
-        self.pub_func_px4.publish_att_command(self.veh_att_set)
 
-    def sigmoid(self,t, k=10, t0=1):
-        alpha = 1 / (1 + math.exp(-k * (t - t0)))
-        if alpha > 1.0:
-            alpha = 1.0
-        elif alpha < 0.0:
-            alpha = 0.0
+    def smoothstep(self, t):
+        """
+        Smoothstep interpolation (3차 S-curve)
+        입력: t ∈ [0, 1]
+        출력: smooth transition from 0 to 1
+        - t=0에서 미분값 0 (부드러운 시작)
+        - t=1에서 미분값 0 (부드러운 종료)
+        """
+        if t <= 0.0:
+            return 0.0
+        elif t >= 1.0:
+            return 1.0
+        else:
+            # 3t^2 - 2t^3
+            return t * t * (3.0 - 2.0 * t)
 
-        return alpha
+    def smootherstep(self, t):
+        """
+        Smootherstep interpolation (5차 S-curve, 더 부드러움)
+        입력: t ∈ [0, 1]
+        출력: 6t^5 - 15t^4 + 10t^3
+        - 1차, 2차 미분값도 0 (가속도까지 부드러움)
+        """
+        if t <= 0.0:
+            return 0.0
+        elif t >= 1.0:
+            return 1.0
+        else:
+            return t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
 
 def main(args=None):
     rclpy.init(args=args)

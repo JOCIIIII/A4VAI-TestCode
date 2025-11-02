@@ -165,3 +165,9 @@ class VehicleVelocitySetpointState:
         self.yawspeed = np.nan
 
         self.body_velocity = np.nan * np.ones(3)
+
+        # Collision avoidance initial velocity (captured when CA starts)
+        self.ca_initial_vx = 0.0
+        self.ca_start_time = None  # CA 진입 시간 (ramping 용)
+        self.ca_ramp_duration = 1.5  # seconds (vx ramping 시간 - fusion weight와 동기화)
+        self.ca_ramp_delay = 0.0  # seconds (즉시 회피 - 중앙 장애물 대응)
