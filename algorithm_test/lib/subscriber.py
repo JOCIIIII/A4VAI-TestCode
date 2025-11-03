@@ -167,7 +167,7 @@ def PF_Att2Control_callback(node, msg):
 # update velocity offboard command from collision avoidance
 def CA2Control_callback(node, msg):
 
-    vy_gain = 7.0
+    vy_gain = 8.0
     yaw_gain = 1.0
 
     # Velocity ramping: CA 진입 초기에는 현재 vx 유지, 점진적으로 ca_initial_vx로 변경
@@ -202,7 +202,7 @@ def CA2Control_callback(node, msg):
         node.veh_vel_set.yawspeed = 0.0
     else:
         # 충돌회피 진행 중: ramped vx 사용, vy와 yaw만 CA 명령 사용
-        node.veh_vel_set.body_velocity = np.array([vx_command, (-msg.linear.y-0.2)*vy_gain, 0])
+        node.veh_vel_set.body_velocity = np.array([vx_command, (-msg.linear.y-0.15)*vy_gain, 0])
 
         node.veh_vel_set.yawspeed = -msg.angular.z*yaw_gain
 

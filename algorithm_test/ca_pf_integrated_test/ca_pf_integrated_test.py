@@ -234,6 +234,26 @@ class CAPFIntegrationTest(Node):
                     self.ca_exit_transition_active = True
                     self.get_logger().info("🔄 CA→PF Transition: Resuming path following")
 
+                    # Update waypoints: Insert current position as new waypoint
+                    # Keep only waypoints from current heading waypoint onward
+                    self.guid_var.waypoint_x = self.guid_var.waypoint_x[self.guid_var.cur_wp:]
+                    self.guid_var.waypoint_y = self.guid_var.waypoint_y[self.guid_var.cur_wp:]
+                    self.guid_var.waypoint_z = self.guid_var.waypoint_z[self.guid_var.cur_wp:]
+
+                    # Insert current position as first waypoint (collision avoidance end point)
+                    self.guid_var.waypoint_x = list(np.insert(self.guid_var.waypoint_x, 0, self.state_var.x))
+                    self.guid_var.waypoint_y = list(np.insert(self.guid_var.waypoint_y, 0, self.state_var.y))
+                    self.guid_var.waypoint_z = list(np.insert(self.guid_var.waypoint_z, 0, self.state_var.z))
+
+                    # Update real waypoint variables
+                    self.guid_var.real_wp_x = self.guid_var.waypoint_x
+                    self.guid_var.real_wp_y = self.guid_var.waypoint_y
+                    self.guid_var.real_wp_z = self.guid_var.waypoint_z
+
+                    # Publish updated waypoints to path following
+                    self.pub_func_module.local_waypoint_publish(False)
+                    self.get_logger().info(f"✅ Updated waypoints - New first WP: ({self.state_var.x:.2f}, {self.state_var.y:.2f}, {self.state_var.z:.2f})")
+
                 # PathFollowing will handle trajectory and yaw control
                 # No need for manual yaw transition - let PathFollowing do it naturally
             elif self.flags.obstacle_flag == True and (self.mode_status.PATH_FOLLOWING == True or self.ca_exit_transition_active):

@@ -60,7 +60,7 @@ class OffboardVariable:
 
 class GuidVariable:
     def __init__(self):
-        self.init_pos = np.array([0., 0., 4.0])
+        self.init_pos = np.array([0., 0., 2.5])
         self.waypoint_x = []
         self.waypoint_y = []
         self.waypoint_z = []
