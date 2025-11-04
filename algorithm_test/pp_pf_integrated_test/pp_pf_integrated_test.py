@@ -24,8 +24,8 @@ class PathPlanningPathFollowingIntegTest(Node):
         ############################################################################################################
         # input: start_point, goal_point
         # set start and goal point
-        self.start_point = [50.0, 50.0, 5.0]
-        self.goal_point = [950.0, 950.0, 5.0]
+        self.start_point = [200.0, 800.0, 4.0]
+        self.goal_point = [750.0, 750.0, 4.0]
         ############################################################################################################
         
         # ----------------------------------------------------------------------------------------#
@@ -34,7 +34,8 @@ class PathPlanningPathFollowingIntegTest(Node):
         sim_name = "pp_pf_integ_test"
         set_initial_variables(self, dir, sim_name)
         
-        self.guid_var.init_pos = np.array([self.start_point[0]*400/1024, self.start_point[1]*400/1024, self.start_point[2]])
+        self.guid_var.init_pos = np.array([0.0, 0.0, 4.0])
+        self.offset = np.array([self.start_point[0]*240/1024, self.start_point[1]*240/1024, self.start_point[2]])
         # test mode 
         # 1 : normal, 2 : wp change
         self.test_mode = 2
@@ -79,11 +80,11 @@ class PathPlanningPathFollowingIntegTest(Node):
         self.sub_cmd.declarePFAttitudeSetpointSubscriber()
 
         self.sub_flag = FlagSubscriber(self)
-        self.sub_flag.declareConveyLocalWaypointCompleteSubscriber(self.mode_status)
-        self.sub_flag.declarePFCompleteSubscriber(self.mode_status)
+        self.sub_flag.declareConveyLocalWaypointCompleteSubscriber()
+        self.sub_flag.declarePFCompleteSubscriber()
 
         self.sub_etc = EtcSubscriber(self)
-        self.sub_etc.declareHeadingWPIdxSubscriber(self.guid_var)
+        self.sub_etc.declareHeadingWPIdxSubscriber()
         # endregion
         # ----------------------------------------------------------------------------------------#
         # region PUB FUNC
@@ -94,14 +95,14 @@ class PathPlanningPathFollowingIntegTest(Node):
         # endregion
         # ----------------------------------------------------------------------------------------#
         # region TIMER
-        self.timer_offboard_control = MainTimer(self, self.offboard_var)
+        self.timer_offboard_control = MainTimer(self)
         self.timer_offboard_control.declareOffboardControlTimer(self.offboard_control_main)
 
-        self.timer_cmd = CommandPubTimer(self, self.offboard_var)
+        self.timer_cmd = CommandPubTimer(self)
         # self.timer_cmd.declareOffboardAttitudeControlTimer(self.mode_status, self.veh_att_set, self.pub_func_px4)
-        self.timer_cmd.declareAttitudeCommandTimer(self.mode_status, self.veh_att_set, self.pub_func_px4)
-        
-        self.timer_heartbeat = HeartbeatTimer(self, self.offboard_var, self.pub_func_heartbeat)
+        self.timer_cmd.declareAttitudeCommandTimer()
+
+        self.timer_heartbeat = HeartbeatTimer(self)
         self.timer_heartbeat.declareControllerHeartbeatTimer()
         self.timer_heartbeat.declareCollisionAvoidanceHeartbeatTimer()
 
@@ -135,12 +136,12 @@ class PathPlanningPathFollowingIntegTest(Node):
         if self.mode_status.TAKEOFF == False and self.flags.pf_get_local_waypoint == False:
             self.pub_func_px4.publish_vehicle_command(self.modes.prm_position_mode)
             self.global_waypoint_publish(self.start_point, self.goal_point)
-            
+
         # check if path following is recieved the local waypoint
         if self.flags.pf_get_local_waypoint == True and self.flags.pf_done == False:
             self.mode_status.OFFBOARD = True
             self.mode_status.PATH_FOLLOWING = True
-            publish_to_plotter(self)
+            # publish_to_plotter(self)
 
         # check if path following is recieved the local waypoint
         if self.mode_status.OFFBOARD == True and self.flags.pf_done == False:
@@ -178,24 +179,29 @@ class PathPlanningPathFollowingIntegTest(Node):
     def local_waypoint_callback(self, msg):
         if self.flags.pf_get_local_waypoint == False:
 
-            xy = np.array([msg.waypoint_x, msg.waypoint_y]) # [2 X N]
-            
-            theta = np.pi/2
+            xy = np.array([msg.waypoint_x, msg.waypoint_y])*240/1024 # [2 X N]
 
-            dcm = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
-            new_xy = dcm @ xy
+            # Additional offset to align with drone's local frame
+            additional_offset = 140.625  # 600 * 100/1024
 
-            new_init_pos = dcm @ self.guid_var.init_pos[:2]
+            # theta = np.pi/2
 
-            self.get_logger().info(f'xy: {new_xy.shape}')
+            # dcm = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
+            # new_xy = dcm @ xy
+
+            # new_init_pos = dcm @ self.guid_var.init_pos[:2]
+
+            # self.get_logger().info(f'xy: {new_xy.shape}')
 
             for i in range(len(msg.waypoint_x)):
-                self.guid_var.waypoint_x.append(float(new_xy[0, i]*400/1024 - new_init_pos[0]))
-                self.guid_var.waypoint_y.append(float(new_xy[1, i]*400/1024 - new_init_pos[1]))
-                self.guid_var.waypoint_z.append(float(msg.waypoint_z[i]) + 1) 
+                self.guid_var.waypoint_x.append(-(float(xy[0, i] - self.offset[0] - additional_offset)))
+                self.guid_var.waypoint_y.append((float(xy[1, i] - self.offset[1] + additional_offset)))
+                self.guid_var.waypoint_z.append(float(msg.waypoint_z[i]))
+
             self.guid_var.real_wp_x = self.guid_var.waypoint_x
             self.guid_var.real_wp_y = self.guid_var.waypoint_y
             self.guid_var.real_wp_z = self.guid_var.waypoint_z
+
 
             self.local_waypoint_publish()
             self.flags.pf_get_local_waypoint = True
@@ -209,6 +215,9 @@ class PathPlanningPathFollowingIntegTest(Node):
         msg.waypoint_y = self.guid_var.waypoint_y
         msg.waypoint_z = self.guid_var.waypoint_z
         self.local_waypoint_publisher_to_pf.publish(msg)
+        self.get_logger().info(f'waypoint_x: {self.guid_var.waypoint_x}')
+        self.get_logger().info(f'waypoint_y: {self.guid_var.waypoint_y}')
+        self.get_logger().info(f'waypoint_z: {self.guid_var.waypoint_z}')
 
     def weight_callback(self):
         self.weight.timestamp = int(Clock().now().nanoseconds / 1000)  # time in microseconds

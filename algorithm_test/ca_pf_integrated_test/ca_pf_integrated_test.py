@@ -36,7 +36,7 @@ class CAPFIntegrationTest(Node):
         self.transition_start_time = None
         self.transition_initial_weight = 0.0  # 전환 시작 시 weight 값
         self.transition_duration_to_pf = 5.0  # seconds (CA → PF: 천천히 전환하여 피치 급변 방지)
-        self.transition_duration_to_ca = 1.5  # seconds (PF → CA: 중앙 장애물 긴급 회피)
+        self.transition_duration_to_ca = 1.0  # seconds (PF → CA: 적절한 회피 반응)
         self.ca_entry_delay = 0.0  # seconds (CA 진입 즉시 - 중앙 장애물 대응)
         self.initial_setting = False
 

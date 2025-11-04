@@ -2,7 +2,9 @@
 import numpy as np
 import math
 import time
+import os
 import rclpy
+
 from rclpy.clock import Clock
 # custom libraries
 from .common_fuctions import convert_quaternion2euler, BodytoNED, DCM_from_euler_angle, NEDtoBody
@@ -167,8 +169,18 @@ def PF_Att2Control_callback(node, msg):
 # update velocity offboard command from collision avoidance
 def CA2Control_callback(node, msg):
 
-    vy_gain = 8.0
-    yaw_gain = 1.0
+    vy_gain = 1.0
+    yaw_gain = 0.5  # yaw 출력 절반으로 감소 (과도한 회전 방지)
+
+    # 로그 파일 초기화 (첫 콜백에서만)
+    if not hasattr(node, '_ca_log_file_initialized'):
+        node._ca_log_file_initialized = True
+        log_dir = "/home/user/workspace/ros2/logs"
+        os.makedirs(log_dir, exist_ok=True)
+        node._ca_log_path = os.path.join(log_dir, "ca_commands_integrated.csv")
+        with open(node._ca_log_path, "w") as f:
+            f.write("timestamp,vy_raw,yaw_raw,vx_final,vy_final,yaw_final,rand_point\n")
+        node.get_logger().info(f"CA command logging to: {node._ca_log_path}")
 
     # Velocity ramping: CA 진입 초기에는 현재 vx 유지, 점진적으로 ca_initial_vx로 변경
     vx_command = node.veh_vel_set.ca_initial_vx
@@ -200,16 +212,31 @@ def CA2Control_callback(node, msg):
         # 회피 완료 후 경로 복귀: vx 유지하면서 측면 속도와 yaw는 0
         node.veh_vel_set.body_velocity = np.array([vx_command, 0.0, 0.0])
         node.veh_vel_set.yawspeed = 0.0
+        vx_final, vy_final, yaw_final = vx_command, 0.0, 0.0
     else:
         # 충돌회피 진행 중: ramped vx 사용, vy와 yaw만 CA 명령 사용
-        node.veh_vel_set.body_velocity = np.array([vx_command, (-msg.linear.y-0.15)*vy_gain, 0])
+        # direct_infer.py에서 이미 방향 결정됨 - vy와 yaw 모두 그대로 사용
+        vy = - msg.linear.y * vy_gain  # 그대로 사용
+        yaw = - msg.angular.z * yaw_gain  # 부호 반전 제거 - vy와 같은 방향으로 회전
 
-        node.veh_vel_set.yawspeed = -msg.angular.z*yaw_gain
+        # 안전 제한
+        vy = np.clip(vy, -6.0, 6.0)
+        yaw = np.clip(yaw, -1.5, 1.5)  # yaw_gain=0.5 적용 후 최대값
+
+        node.veh_vel_set.body_velocity = np.array([vx_command, vy, 0])
+        node.veh_vel_set.yawspeed = yaw
+        vx_final, vy_final, yaw_final = vx_command, vy, yaw
 
     node.veh_vel_set.ned_velocity = BodytoNED(node.veh_vel_set.body_velocity, node.state_var.dcm_b2n)
 
     # 고도는 유지
     node.veh_vel_set.ned_velocity[2] = 0.0
+
+    # 파일 로깅
+    timestamp = node.get_clock().now().nanoseconds / 1e9
+    with open(node._ca_log_path, "a") as f:
+        f.write(f"{timestamp:.3f},{msg.linear.y:.4f},{msg.angular.z:.4f},"
+               f"{vx_final:.4f},{vy_final:.4f},{yaw_final:.4f},{int(node.flags.rand_point_flag)}\n")
 
 # subscribe convey local waypoint complete flag from path following
 def vehicle_local_position_callback(node, msg):
