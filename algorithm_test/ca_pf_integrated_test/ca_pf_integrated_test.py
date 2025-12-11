@@ -234,11 +234,35 @@ class CAPFIntegrationTest(Node):
                     self.ca_exit_transition_active = True
                     self.get_logger().info("🔄 CA→PF Transition: Resuming path following")
 
-                    # Update waypoints: Insert current position as new waypoint
-                    # Keep only waypoints from current heading waypoint onward
-                    self.guid_var.waypoint_x = self.guid_var.waypoint_x[self.guid_var.cur_wp:]
-                    self.guid_var.waypoint_y = self.guid_var.waypoint_y[self.guid_var.cur_wp:]
-                    self.guid_var.waypoint_z = self.guid_var.waypoint_z[self.guid_var.cur_wp:]
+                    # Update waypoints: Find closest waypoint ahead of current position
+                    current_pos = np.array([self.state_var.x, self.state_var.y, self.state_var.z])
+
+                    # Find the closest waypoint that is ahead of the drone
+                    min_dist = float('inf')
+                    closest_wp_idx = self.guid_var.cur_wp  # Start from cur_wp
+
+                    for i in range(self.guid_var.cur_wp, len(self.guid_var.waypoint_x)):
+                        wp_pos = np.array([
+                            self.guid_var.waypoint_x[i],
+                            self.guid_var.waypoint_y[i],
+                            self.guid_var.waypoint_z[i]
+                        ])
+                        dist = np.linalg.norm(wp_pos - current_pos)
+
+                        # Select the closest waypoint
+                        if dist < min_dist:
+                            min_dist = dist
+                            closest_wp_idx = i
+
+                    self.get_logger().info(
+                        f"📍 CA Exit: Current pos ({self.state_var.x:.1f}, {self.state_var.y:.1f}, {self.state_var.z:.1f}), "
+                        f"Closest WP: #{closest_wp_idx} at distance {min_dist:.1f}m"
+                    )
+
+                    # Keep only waypoints from closest waypoint onward
+                    self.guid_var.waypoint_x = self.guid_var.waypoint_x[closest_wp_idx:]
+                    self.guid_var.waypoint_y = self.guid_var.waypoint_y[closest_wp_idx:]
+                    self.guid_var.waypoint_z = self.guid_var.waypoint_z[closest_wp_idx:]
 
                     # Insert current position as first waypoint (collision avoidance end point)
                     self.guid_var.waypoint_x = list(np.insert(self.guid_var.waypoint_x, 0, self.state_var.x))
